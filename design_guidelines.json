@@ -1,0 +1,133 @@
+{
+  "project_title": "Circuit - Full Stack Application Architecture Simulator & Problem Mapper",
+  "design_concept": "Printed Circuit Board (PCB) Electronics Studio meets C4 Architecture Visualizer. Dark mode obsidian substrates, glowing copper traces, chip IC node housings, active signal animations, and fault detection 'X' indicators.",
+  "theme": {
+    "mode": "dark",
+    "background": "#070A0F",
+    "card_background": "#0F172A",
+    "surface_elevated": "#1E293B"
+  },
+  "colors": {
+    "background_obsidian": "#070A0F",
+    "pcb_substrate": "#0F172A",
+    "card_surface": "#162032",
+    "border_trace": "#1E2D42",
+    "border_trace_glow": "#10B981",
+    "copper_solder": "#F59E0B",
+    "primary_emerald": "#10B981",
+    "signal_cyan": "#06B6D4",
+    "bus_purple": "#8B5CF6",
+    "warning_amber": "#F59E0B",
+    "fault_red": "#EF4444",
+    "text_primary": "#F8FAFC",
+    "text_secondary": "#94A3B8",
+    "text_muted": "#64748B",
+    "glass_background": "rgba(15, 23, 42, 0.85)",
+    "glass_border": "rgba(30, 41, 59, 0.8)"
+  },
+  "typography": {
+    "heading_font": "'Fira Code', 'JetBrains Mono', Monaco, monospace",
+    "body_font": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    "mono_font": "'Fira Code', 'Roboto Mono', monospace",
+    "hierarchy": {
+      "h1": "text-3xl sm:text-4xl font-mono font-bold tracking-tight text-slate-100",
+      "h2": "text-xl sm:text-2xl font-mono font-semibold tracking-tight text-emerald-400",
+      "h3": "text-lg font-mono font-medium text-slate-200",
+      "body": "text-sm text-slate-300 leading-relaxed",
+      "caption": "text-xs font-mono text-slate-400 uppercase tracking-widest",
+      "chip_label": "text-[11px] font-mono font-bold uppercase tracking-wider text-emerald-300"
+    }
+  },
+  "spacing_and_layout": {
+    "canvas_padding": "p-4 md:p-6",
+    "card_padding": "p-5",
+    "grid_gap": "gap-4 md:gap-6",
+    "border_radius": "rounded-lg",
+    "panel_shadow": "shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+  },
+  "visual_enhancers": {
+    "pcb_grid_background": "bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:20px_20px]",
+    "glow_trace_active": "drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]",
+    "glow_trace_fault": "drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]",
+    "glassmorphism": "backdrop-blur-md bg-slate-900/90 border border-slate-800",
+    "chip_container": "border border-slate-800 bg-slate-900/90 rounded-md relative shadow-lg shadow-black/40 hover:border-emerald-500/50 transition-all"
+  },
+  "key_components": [
+    {
+      "name": "Header & Mode Switcher",
+      "description": "Sticky top bar with Circuit branding, system telemetry badge, real-time live monitoring toggle, and main navigation tabs (Analyzer, Builder, Live Monitor, History)."
+    },
+    {
+      "name": "Code / Zip / Repo Analyzer Onboarding",
+      "description": "Upload panel supporting .zip code upload or GitHub URL paste with live parsing animation (Scanning AST, Detecting Frontend, Backend, DB, LLM Agents)."
+    },
+    {
+      "name": "Interactive PCB Circuit Board Canvas (Node Graph)",
+      "description": "Interactive visual canvas where node blocks (Frontend, Backend, DB, Auth, Vector DB, LLM Agents) are connected by copper wire traces with active glowing pulses."
+    },
+    {
+      "name": "Drill-Down C4 Architecture Inspector",
+      "description": "Clicking any top-level component triggers a smooth drill-down view revealing nested subcomponents, internal function pipelines, API endpoints, and database tables connected with sub-wires."
+    },
+    {
+      "name": "Fault & Problem Marker Overlay ('X' Indicators)",
+      "description": "Red pulsing 'X' markers on broken nodes or disrupted wire traces, accompanied by a Problem Resolution Panel detailing root cause, logs, and recommended fix."
+    },
+    {
+      "name": "Real-Time Telemetry & Interval Monitor Panel",
+      "description": "Live monitoring toolbar with configurable refresh intervals (2s, 5s, 30s), active signal heartbeats, latency graphs, and live packet stream simulation."
+    },
+    {
+      "name": "Chatbot Onboarding Wizard for Circuit Builder",
+      "description": "Interactive step-by-step AI wizard asking prompt questions (App type, Frontend framework, Backend runtime, Database, AI capabilities) before populating the canvas."
+    },
+    {
+      "name": "Drag-and-Drop Circuit Builder Canvas & Component Palette",
+      "description": "Side palette with draggable full-stack components (React, Node.js, Python, PostgreSQL, Redis, OpenAI, Pinecone) that users can drop onto the PCB canvas and link with wiring tools."
+    },
+    {
+      "name": "Export & Code Generation Modal",
+      "description": "Exports the visually built or analyzed circuit into Docker Compose files, Terraform scripts, C4 diagram JSON, or boilerplate full-stack code."
+    }
+  ],
+  "image_urls": [
+    {
+      "category": "circuit_background",
+      "url": "https://images.unsplash.com/photo-1631375937044-6dd5beac01d2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwxfHxjaXJjdWl0JTIwYm9hcmQlMjB0ZWNobm9sb2d5JTIwZ3JlZW4lMjBnbG93aW5nJTIwd2lyZXN8ZW58MHx8fHwxNzg4ODQyNTU1fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Close up of computer motherboard with green traces"
+    },
+    {
+      "category": "abstract_tech",
+      "url": "https://images.unsplash.com/photo-1735744583287-07e58313f8cf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwzfHxjaXJjdWl0JTIwYm9hcmQlMjB0ZWNobm9sb2d5JTIwZ3JlZW4lMjBnbG93aW5nJTIwd2lyZXN8ZW58MHx8fHwxNzg4ODQyNTU1fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Green and black abstract circuit board structure"
+    },
+    {
+      "category": "server_datacenter",
+      "url": "https://images.unsplash.com/photo-1680992044138-ce4864c2b962?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHw0fHxjaXJjdWl0JTIwYm9hcmQlMjB0ZWNobm9sb2d5JTIwZ3JlZW4lMjBnbG93aW5nJTIwd2lyZXN8ZW58MHx8fHwxNzg4ODQyNTU1fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Server rack illuminated in green tech light"
+    },
+    {
+      "category": "developer_workstation",
+      "url": "https://images.unsplash.com/photo-1534972195531-d756b9bfa9f2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHw0fHxkZXZlbG9wZXIlMjBkYXJrJTIwd29ya3N0YXRpb24lMjBjb2RlJTIwc2NyZWVufGVufDB8fHx8MTc4ODg0MjU1OHww&ixlib=rb-4.1.0&q=85",
+      "description": "Developer monitors showing code"
+    }
+  ],
+  "testing_and_accessibility": {
+    "data_testid_convention": "All interactive elements (buttons, inputs, canvas nodes, wire connectors, tabs, modals) MUST have data-testid attributes in kebab-case (e.g. data-testid='circuit-upload-btn', data-testid='node-frontend-card', data-testid='fault-marker-db-connection').",
+    "color_contrast": "High contrast signals (Emerald #10B981, Cyan #06B6D4, Red #EF4444) on dark slate substrate (#0F172A) with clear readable font styling."
+  },
+  "instructions_to_main_agent": [
+    "Use JavaScript (.js and .jsx files) as specified by the repository environment. Do not use TypeScript syntax.",
+    "Style the application as a dark electronic circuit board studio. Use dark slate backgrounds (#070A0F, #0F172A), grid dots, metallic borders, glowing SVG wire traces, and IC chip node cards.",
+    "Implement the full workflow: Code Analysis (upload ZIP / paste URL), Visual PCB Circuit Diagram with animated wires, C4 Drill-Down view into subcomponents, Fault Detection with red 'X' markers and diagnosis panel, Live Interval Monitoring, Chatbot Onboarding Wizard, Drag-and-Drop Circuit Builder, and Export options.",
+    "Ensure all headers, dialogs, drawers, and popovers use explicit solid/semi-opaque dark glass backgrounds with backdrop-blur, NEVER fully transparent backgrounds.",
+    "Attach data-testid attributes to all interactive and state-displaying components for end-to-end testing verification."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "anti_slop_rule": "Avoid plain generic white or grey card layouts. Make every card feel like an Integrated Circuit (IC) chip with pin leads, silkscreen labels, status LED dots, and copper track connectors.",
+    "navigation_rule": "Always render a visible navigation header with brand logo, telemetry indicators, view mode tabs, and primary actions.",
+    "hover_state_rule": "Always explicitly define hover text colors alongside background hover states to maintain readable contrast.",
+    "no_transparent_header_overlay": "DO NOT use completely transparent backgrounds for navigation headers or dropdown overlays.",
+    "toast_notifications": "Use sonner toast component for user feedback when analyzing code, connecting nodes, detecting faults, or exporting projects."
+  }
+}

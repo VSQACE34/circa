@@ -1,0 +1,78 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+@import '@xyflow/react/dist/style.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --c-bg: #070A0F;
+  --c-substrate: #0F172A;
+  --c-surface: #162032;
+  --c-trace: #1E2D42;
+  --c-emerald: #10B981;
+  --c-cyan: #06B6D4;
+  --c-purple: #8B5CF6;
+  --c-amber: #F59E0B;
+  --c-red: #EF4444;
+}
+
+* { border-color: var(--c-trace); }
+
+body {
+  margin: 0;
+  background: var(--c-bg);
+  color: #F8FAFC;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-mono { font-family: 'Fira Code', 'Roboto Mono', monospace; }
+
+/* PCB dotted grid */
+.pcb-grid {
+  background-color: var(--c-bg);
+  background-image: radial-gradient(rgba(30,45,66,0.9) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0b1220; }
+::-webkit-scrollbar-thumb { background: #1E2D42; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #2b4160; }
+
+::selection { background: rgba(16,185,129,0.3); color: #ecfdf5; }
+
+/* react flow overrides */
+.react-flow__attribution { display: none; }
+.react-flow__edge-path { stroke-width: 2; }
+.react-flow__handle { width: 9px; height: 9px; background: var(--c-amber); border: 2px solid #0b1220; }
+.react-flow__controls { background: var(--c-surface); border: 1px solid var(--c-trace); border-radius: 8px; overflow: hidden; }
+.react-flow__controls-button { background: var(--c-surface); border-bottom: 1px solid var(--c-trace); fill: #94A3B8; }
+.react-flow__controls-button:hover { background: #1e293b; }
+.react-flow__minimap { background: var(--c-substrate) !important; border: 1px solid var(--c-trace); border-radius: 8px; }
+
+/* signal pulse along wire */
+@keyframes dashflow { to { stroke-dashoffset: -100; } }
+.wire-active { stroke-dasharray: 6 6; animation: dashflow 1.6s linear infinite; }
+
+@keyframes pulseglow {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .55; transform: scale(1.18); }
+}
+.led-pulse { animation: pulseglow 1.4s ease-in-out infinite; }
+
+@keyframes faultblink {
+  0%,100% { opacity: 1; }
+  50% { opacity: .35; }
+}
+.fault-blink { animation: faultblink 0.9s ease-in-out infinite; }
+
+@keyframes fadeup {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeup .5s ease both; }
+
+.glass { backdrop-filter: blur(14px); background: rgba(15,23,42,0.9); border: 1px solid rgba(30,45,66,0.9); }
