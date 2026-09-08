@@ -119,6 +119,26 @@ def _env_keys(text):
     return keys
 
 
+def _extract_tables(text):
+    t = set()
+    for m in re.finditer(r"__tablename__\s*=\s*['\"](\w+)['\"]", text):
+        t.add(m.group(1))
+    for m in re.finditer(r"CREATE TABLE(?:\s+IF NOT EXISTS)?\s+[`\"']?(\w+)", text, re.IGNORECASE):
+        t.add(m.group(1))
+    for m in re.finditer(r"\bmodel\s+(\w+)\s*\{", text):
+        t.add(m.group(1))
+    for m in re.finditer(r"mongoose\.model\(\s*['\"](\w+)['\"]", text):
+        t.add(m.group(1))
+    for m in re.finditer(r"\bdb\.(\w+)\.(?:find|insert|update|delete|aggregate|count|replace)", text):
+        t.add(m.group(1))
+    for m in re.finditer(r"\.collection\(\s*['\"](\w+)['\"]", text):
+        t.add(m.group(1))
+    for m in re.finditer(r"\bdb\[\s*['\"](\w+)['\"]\s*\]", text):
+        t.add(m.group(1))
+    noise = {"model", "models", "test", "tests", "the", "get", "set", "one", "many"}
+    return {x for x in t if 2 <= len(x) <= 40 and x.lower() not in noise}
+
+
 def analyze_tree(root: Path, project_name: str):
     files = _walk(root)
     frontend_files, backend_files, env_files = [], [], []
@@ -126,6 +146,7 @@ def analyze_tree(root: Path, project_name: str):
     loc = 0
     frameworks = {"frontend": set(), "backend": set()}
     dbs, llms, auths, storages = set(), set(), set(), set()
+    tables = set()
     endpoints = []
     api_calls = []
     defined_env = set()
@@ -153,6 +174,7 @@ def analyze_tree(root: Path, project_name: str):
                     defined_env.add(mm.group(1))
 
         used_env |= _env_keys(text)
+        tables |= _extract_tables(text)
 
         for name, pats in FRONTEND_SIGS.items():
             if _match_any(pats, text):
@@ -327,6 +349,7 @@ def analyze_tree(root: Path, project_name: str):
         for n in nodes:
             if n.id == node_ids["backend"]:
                 n.has_children = True
+                n.meta["endpoint_list"] = [f"{m} {p}" for m, p in endpoints[:30]]
 
     # Frontend subgraph = top folders / pages
     if has_frontend and node_ids.get("frontend"):
@@ -349,6 +372,27 @@ def analyze_tree(root: Path, project_name: str):
             if n.id == node_ids["frontend"]:
                 n.has_children = True
 
+    # Database subgraph = detected tables / collections
+    if tables:
+        tlist = sorted(tables)[:16]
+        for i, _dbn in enumerate(sorted(dbs)):
+            dbid = node_ids.get(f"db{i}")
+            if not dbid:
+                continue
+            sg_nodes = [GraphNode(id="sd_schema", label="Schema", category="service", position=Position())]
+            sg_edges = []
+            for j, t in enumerate(tlist):
+                tid = f"sd_t{j}"
+                sg_nodes.append(GraphNode(id=tid, label=t, category="database", position=Position(),
+                                          meta={"kind": "table/collection"}))
+                sg_edges.append(GraphEdge(id=f"sde_{j}", source="sd_schema", target=tid,
+                                          label="table", protocol="schema"))
+            subgraphs[dbid] = SubGraph(nodes=sg_nodes, edges=sg_edges)
+            for n in nodes:
+                if n.id == dbid:
+                    n.has_children = True
+                    n.meta["tables"] = tlist
+
     layout(nodes)
     for pid, sg in subgraphs.items():
         layout(sg.nodes)
@@ -366,6 +410,7 @@ def analyze_tree(root: Path, project_name: str):
         "storage": sorted(storages),
         "frontend_frameworks": sorted(frameworks["frontend"]),
         "backend_frameworks": sorted(frameworks["backend"]),
+        "tables": sorted(tables),
     }
     blob = "\n\n".join(all_blob_parts)[:60000]
     return graph, problems, stats, blob

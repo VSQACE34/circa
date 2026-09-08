@@ -19,6 +19,7 @@ export const api = {
   project: (id) => axios.get(`${API}/projects/${id}`).then((r) => r.data),
   deleteProject: (id) => axios.delete(`${API}/projects/${id}`).then((r) => r.data),
   monitor: (id) => axios.get(`${API}/projects/${id}/monitor`).then((r) => r.data),
+  monitorConfig: (id, config) => axios.post(`${API}/projects/${id}/monitor/config`, { config }).then((r) => r.data),
   generate: (body) => axios.post(`${API}/builder/generate`, body).then((r) => r.data),
   validate: (body) => axios.post(`${API}/builder/validate`, body).then((r) => r.data),
 };

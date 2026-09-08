@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNodesState, useEdgesState } from '@xyflow/react';
 import { toast } from 'sonner';
-import { Activity, Play, Pause, Radio, Cpu, Clock } from 'lucide-react';
+import { Activity, Play, Pause, Radio, Cpu, Clock, Settings, Save, Globe, Loader2 } from 'lucide-react';
 import CircuitCanvas from '../components/CircuitCanvas';
 import { api } from '../lib/api';
 import { toRFNodes, toRFEdges } from '../lib/graph';
@@ -21,6 +21,9 @@ export default function MonitorPage() {
   const [interval, setIntervalMs] = useState(2000);
   const [tele, setTele] = useState([]);
   const [ts, setTs] = useState(null);
+  const [showConfig, setShowConfig] = useState(false);
+  const [config, setConfig] = useState({});
+  const [savingCfg, setSavingCfg] = useState(false);
   const timer = useRef();
 
   const [nodes, setNodes] = useNodesState([]);
@@ -35,8 +38,19 @@ export default function MonitorPage() {
 
   useEffect(() => {
     if (!selId) return;
-    api.project(selId).then(setProject).catch(() => {});
+    api.project(selId).then((p) => { setProject(p); setConfig(p.monitor_config || {}); }).catch(() => {});
   }, [selId]);
+
+  const saveConfig = async () => {
+    setSavingCfg(true);
+    try {
+      await api.monitorConfig(selId, config);
+      toast.success('Health-check endpoints saved', { description: 'Configured nodes now report live status.' });
+      poll();
+    } catch (e) {
+      toast.error('Could not save endpoints');
+    } finally { setSavingCfg(false); }
+  };
 
   const poll = useCallback(async () => {
     if (!selId) return;
@@ -135,9 +149,45 @@ export default function MonitorPage() {
 
       {/* telemetry panel */}
       <div className="w-full md:w-[340px] shrink-0 border-t md:border-t-0 md:border-l border-slate-800 bg-slate-950/60 flex flex-col max-h-[45vh] md:max-h-none">
-        <div className="px-4 py-3 border-b border-slate-800 font-mono text-sm font-semibold text-slate-200 flex items-center gap-2">
-          <Cpu size={15} className="text-emerald-400" /> Telemetry
+        <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
+          <Cpu size={15} className="text-emerald-400" />
+          <span className="font-mono text-sm font-semibold text-slate-200">Telemetry</span>
+          <button
+            data-testid="monitor-config-toggle"
+            onClick={() => setShowConfig((v) => !v)}
+            className={`ml-auto flex items-center gap-1.5 text-[11px] font-mono px-2 py-1 rounded border transition-all ${showConfig ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-slate-700 text-slate-400 hover:text-slate-100'}`}
+          >
+            <Settings size={12} /> Endpoints
+          </button>
         </div>
+
+        {showConfig && project && (
+          <div className="border-b border-slate-800 p-3 space-y-2 bg-slate-950/40" data-testid="monitor-config-editor">
+            <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1.5">
+              <Globe size={11} /> Set a real health-check URL per component
+            </div>
+            {project.graph.nodes.map((n) => (
+              <div key={n.id} className="flex items-center gap-2">
+                <span className="text-[11px] font-mono text-slate-400 w-20 truncate shrink-0" title={n.label}>{n.label}</span>
+                <input
+                  data-testid={`config-url-${n.id}`}
+                  value={config[n.id] || ''}
+                  onChange={(e) => setConfig((c) => ({ ...c, [n.id]: e.target.value }))}
+                  placeholder="https://…/health"
+                  className="flex-1 bg-slate-950/60 border border-slate-700 rounded px-2 py-1.5 text-xs font-mono text-slate-100 outline-none focus:border-emerald-500/50 min-w-0"
+                />
+              </div>
+            ))}
+            <button
+              data-testid="save-config-btn"
+              onClick={saveConfig}
+              disabled={savingCfg}
+              className="w-full mt-1 py-2 rounded-md bg-emerald-500 text-slate-950 text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 flex items-center justify-center gap-1.5"
+            >
+              {savingCfg ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save & probe
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto p-3 space-y-2" data-testid="telemetry-list">
           {tele.map((t) => {
             const cat = catOf(t.category);
@@ -148,6 +198,9 @@ export default function MonitorPage() {
                 <div className="flex items-center gap-2">
                   <Icon size={14} style={{ color: cat.color }} />
                   <div className="text-sm text-slate-100 flex-1 truncate">{t.label}</div>
+                  {t.source === 'live' && (
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300" title={t.url}>LIVE</span>
+                  )}
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: `${st.color}22`, color: st.color }}>{st.label}</span>
                 </div>
                 <div className="mt-2 grid grid-cols-3 gap-2 text-center">

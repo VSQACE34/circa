@@ -72,6 +72,7 @@ class Project(BaseModel):
     problems: List[Problem] = Field(default_factory=list)
     stats: Dict[str, Any] = Field(default_factory=dict)
     ai_summary: str = ""
+    monitor_config: Dict[str, str] = Field(default_factory=dict)
 
 
 class AnalyzeGithubRequest(BaseModel):

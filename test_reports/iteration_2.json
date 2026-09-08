@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 2 end-to-end pass. Backend: 18/18 pytest tests pass (13 regression from iter1 + 5 new for real monitoring, deep drill-down, AI codegen). Frontend: real monitoring flow (endpoints toggle -> config editor -> save & probe -> LIVE cyan badge with real latency ~157ms + toast), analyzer drill-down (backend node -> drawer with 15+ ENDPOINTS + drill button -> subgraph -> back), Open in Builder (loads 7 nodes/6 traces preloaded, project name propagated, 'Loaded analyzed circuit' toast, scaffold export .zip download) all verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/builder/export?ai=true", "issue": "AI codegen call takes ~80s and returns 502 through the public ingress (60s ingress timeout). Backend itself completes correctly (24 files incl. models.py/schemas.py/crud.py/routers/items.py/App.jsx, X-AI-Files=18-24). Frontend polls with axios timeout=default which may error out even though backend succeeds."},
+      {"endpoint": "/api/builder/validate & /api/builder/export", "issue": "Still raw dict payloads (no Pydantic schema) — carried over from iter1."},
+      {"endpoint": "/api/projects/{id}/monitor/config", "issue": "Raw dict payload accepted; no validation that config values are URLs. Non-URL strings still saved and would produce probe errors."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "AI Codegen export from Builder", "issue": "Because ingress caps ~60s and LLM codegen ~80s, the axios call from the browser will error even though the backend produced a valid zip. Consider streaming/chunked response or a job-poll endpoint.", "affected_selectors": ["ai-export-btn"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter2_results.xml",
+    "/app/test_reports/pytest/iter2_regression.xml"
+  ],
+  "action_items": [
+    "AI codegen through ingress: switch to async job pattern (POST returns job id, GET polls) OR generate the zip on backend and stream progress; current path exceeds ingress ~60s and will fail for real users via the public URL even though localhost works.",
+    "Add Pydantic models for /builder/validate, /builder/export, /monitor/config payloads.",
+    "Optionally validate URL format in monitor config to give an inline error before probing."
+  ],
+  "critical_code_review_comments": [
+    "server.py:_ai_codegen swallows exceptions and returns {}; frontend can't tell if AI truly produced 0 files vs. errored (X-AI-Files=0 in both cases).",
+    "server.py:set_monitor_config uses `payload.get('config', {})` on a raw dict — no schema; a non-object config silently becomes empty.",
+    "server.py:monitor endpoint returns 'code: None' for simulated nodes but frontend badge logic only branches on source==live — acceptable but keep in sync.",
+    "MonitorPage.jsx: after saveConfig successful poll() is invoked once, but the setInterval already fires every 2s; harmless duplicate.",
+    "BuilderPage.jsx:doExport uses default axios timeout — for ai:true (up to 60-120s) should set timeout: 180000 explicitly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/test_reports/iteration_2.json"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "Added deep analyze of gothinkster/node-express-realworld-example-app and expressjs/express in mongo. Set monitor_config on the realworld project (backend->https://example.com). TEST_scaffold & TEST_ai scaffold-only zips created (not persisted to DB).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iteration2.py hits localhost:8001 for the AI codegen test because the public ingress times out at ~60s and returns 502; backend AI codegen actually succeeds in ~80s and produces 18-24 real encapsulated files. Frontend AI Codegen button will therefore likely fail via the public URL for real users — flagged as an action item. Monitor real-probe path works: setting a URL for any node -> next /monitor poll returns source:'live' with latency_ms>0 & HTTP code.",
+  "rca of the issue": "AI export 502 via public URL — cause: Kubernetes/ingress request timeout (~60s) shorter than LLM+codegen latency (~80s). Mitigation options: (a) async job (POST returns id, poll for zip), (b) stream chunks via StreamingResponse to keep the connection alive, (c) reduce codegen size / parallelize prompts."
+}

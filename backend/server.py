@@ -1,6 +1,7 @@
 import os
 import re
 import io
+import uuid
 import json
 import shutil
 import zipfile
@@ -103,6 +104,50 @@ async def _deep_analysis(blob, model, provider):
         return "", []
 
 
+def _probe(url: str):
+    import time
+    t = time.time()
+    try:
+        r = requests.get(url, timeout=6, headers={"User-Agent": "Circuit-Monitor"})
+        lat = round((time.time() - t) * 1000, 1)
+        return {"status": "healthy" if r.status_code < 400 else "fault",
+                "latency_ms": lat, "code": r.status_code}
+    except Exception:
+        return {"status": "fault", "latency_ms": 0, "code": 0}
+
+
+async def _ai_codegen(name, graph, model, provider):
+    """Ask the LLM to generate real, encapsulated code files for each component."""
+    system = (
+        "You are a senior full-stack engineer. Generate REAL, production-quality, encapsulated code for the "
+        "given architecture circuit. Each component must live in its own module/folder with clear separation of "
+        "concerns, so any part can be reused by importing it. Follow clean conventions. "
+        "Return ONLY valid JSON of the form {\"files\":[{\"path\":\"relative/path.ext\",\"content\":\"...\"}]}. "
+        "Use FastAPI (Python) for backend components, React for frontend, and match the databases/services in the graph. "
+        "Keep it runnable and cohesive. Max 18 files."
+    )
+    prompt = (
+        f"App name: {name}\n"
+        f"Circuit graph (components + wires):\n{json.dumps(graph)[:6000]}\n\n"
+        "Generate the code files now as JSON only."
+    )
+    try:
+        raw = await llm_service.complete("codegen", system, prompt, model, provider)
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        if not m:
+            return {}
+        data = json.loads(m.group(0))
+        files = {}
+        for f in data.get("files", [])[:24]:
+            p, c = f.get("path"), f.get("content")
+            if p and c and ".." not in p:
+                files[p.lstrip("/")] = c
+        return files
+    except Exception as e:
+        logger.warning(f"ai codegen failed: {e}")
+        return {}
+
+
 async def _run_analysis(root: Path, name, source_type, source_ref, model, provider, depth):
     graph, problems, stats, blob = await asyncio.to_thread(analyzer.analyze_tree, root, name)
     problems = _filter_by_depth(problems, depth)
@@ -197,36 +242,65 @@ async def delete_project(project_id: str):
     return {"deleted": True}
 
 
+@api_router.post("/projects/{project_id}/monitor/config")
+async def set_monitor_config(project_id: str, payload: dict):
+    config = {k: v for k, v in (payload.get("config", {}) or {}).items() if v}
+    res = await db.projects.update_one({"id": project_id}, {"$set": {"monitor_config": config}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"saved": True, "config": config}
+
+
 @api_router.get("/projects/{project_id}/monitor")
 async def monitor(project_id: str):
-    """Simulated live telemetry per node based on stored analysis status."""
+    """Live telemetry: real HTTP health probes for configured URLs, simulated otherwise."""
     import random
-    doc = await db.projects.find_one({"id": project_id}, {"_id": 0, "graph": 1, "problems": 1})
+    doc = await db.projects.find_one({"id": project_id}, {"_id": 0, "graph": 1, "problems": 1, "monitor_config": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
     nodes = doc.get("graph", {}).get("nodes", [])
+    cfg = doc.get("monitor_config", {}) or {}
     fault_ids = {p["target_id"] for p in doc.get("problems", []) if p.get("severity") == "fault"}
     warn_ids = {p["target_id"] for p in doc.get("problems", []) if p.get("severity") == "warning"}
+
+    probe_tasks = {nid: asyncio.to_thread(_probe, url) for nid, url in cfg.items() if url}
+    probe_results = {}
+    if probe_tasks:
+        vals = await asyncio.gather(*probe_tasks.values())
+        probe_results = dict(zip(probe_tasks.keys(), vals))
+
     telemetry = []
     for n in nodes:
-        base = n.get("status", "healthy")
-        if n["id"] in fault_ids:
-            status = "fault"
-        elif n["id"] in warn_ids:
-            status = "warning"
+        nid = n["id"]
+        if nid in probe_results:
+            pr = probe_results[nid]
+            telemetry.append({
+                "id": nid, "label": n["label"], "category": n["category"],
+                "status": pr["status"], "latency_ms": pr["latency_ms"],
+                "uptime": 100.0 if pr["status"] == "healthy" else 0,
+                "requests": random.randint(20, 900) if pr["status"] == "healthy" else 0,
+                "source": "live", "url": cfg.get(nid, ""), "code": pr["code"],
+            })
         else:
-            status = base
-        latency = round(random.uniform(8, 45), 1)
-        if status == "warning":
-            latency = round(random.uniform(120, 400), 1)
-        elif status == "fault":
-            latency = 0
-        telemetry.append({
-            "id": n["id"], "label": n["label"], "category": n["category"],
-            "status": status, "latency_ms": latency,
-            "uptime": 0 if status == "fault" else round(random.uniform(97.5, 100.0), 2),
-            "requests": 0 if status == "fault" else random.randint(20, 900),
-        })
+            base = n.get("status", "healthy")
+            if nid in fault_ids:
+                status = "fault"
+            elif nid in warn_ids:
+                status = "warning"
+            else:
+                status = base
+            latency = round(random.uniform(8, 45), 1)
+            if status == "warning":
+                latency = round(random.uniform(120, 400), 1)
+            elif status == "fault":
+                latency = 0
+            telemetry.append({
+                "id": nid, "label": n["label"], "category": n["category"],
+                "status": status, "latency_ms": latency,
+                "uptime": 0 if status == "fault" else round(random.uniform(97.5, 100.0), 2),
+                "requests": 0 if status == "fault" else random.randint(20, 900),
+                "source": "simulated", "url": "", "code": None,
+            })
     return {"timestamp": datetime.now(timezone.utc).isoformat(), "telemetry": telemetry}
 
 
@@ -260,9 +334,61 @@ async def builder_validate(payload: dict):
 async def builder_export(payload: dict):
     name = payload.get("name", "circuit-app")
     graph = payload.get("graph", {})
-    data, filename = await asyncio.to_thread(builder_service.build_export_zip, name, graph)
+    ai = bool(payload.get("ai", False))
+    extra = {}
+    if ai:
+        extra = await _ai_codegen(name, graph, payload.get("model", "claude-sonnet-4-6"),
+                                  payload.get("provider", "anthropic"))
+    data, filename = await asyncio.to_thread(builder_service.build_export_zip, name, graph, extra)
     return Response(content=data, media_type="application/zip",
-                    headers={"Content-Disposition": f"attachment; filename={filename}"})
+                    headers={"Content-Disposition": f"attachment; filename={filename}",
+                             "X-AI-Files": str(len(extra))})
+
+
+# --- Async export job (AI codegen can exceed the ingress timeout, so run it as a background job) ---
+EXPORT_JOBS = {}
+
+
+async def _export_worker(job_id, name, graph, ai, model, provider):
+    try:
+        extra = {}
+        if ai:
+            extra = await _ai_codegen(name, graph, model, provider)
+        data, filename = await asyncio.to_thread(builder_service.build_export_zip, name, graph, extra)
+        EXPORT_JOBS[job_id] = {"status": "done", "data": data, "filename": filename, "ai_files": len(extra)}
+    except Exception as e:
+        logger.warning(f"export job failed: {e}")
+        EXPORT_JOBS[job_id] = {"status": "error", "error": str(e)}
+
+
+@api_router.post("/builder/export-job")
+async def builder_export_job(payload: dict):
+    job_id = str(uuid.uuid4())
+    EXPORT_JOBS[job_id] = {"status": "pending"}
+    asyncio.create_task(_export_worker(
+        job_id, payload.get("name", "circuit-app"), payload.get("graph", {}),
+        bool(payload.get("ai", False)), payload.get("model", "claude-sonnet-4-6"),
+        payload.get("provider", "anthropic")))
+    return {"job_id": job_id}
+
+
+@api_router.get("/builder/export-job/{job_id}")
+async def builder_export_status(job_id: str):
+    job = EXPORT_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"status": job["status"], "ai_files": job.get("ai_files", 0), "error": job.get("error")}
+
+
+@api_router.get("/builder/export-job/{job_id}/download")
+async def builder_export_download(job_id: str):
+    job = EXPORT_JOBS.get(job_id)
+    if not job or job.get("status") != "done":
+        raise HTTPException(status_code=404, detail="Not ready")
+    EXPORT_JOBS.pop(job_id, None)
+    return Response(content=job["data"], media_type="application/zip",
+                    headers={"Content-Disposition": f"attachment; filename={job['filename']}",
+                             "X-AI-Files": str(job.get("ai_files", 0))})
 
 
 app.include_router(api_router)

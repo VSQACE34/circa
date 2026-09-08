@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNodesState, useEdgesState } from '@xyflow/react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  Github, Upload, Loader2, ChevronLeft, Cpu, FileCode2, Boxes, Sparkles, Trash2, RefreshCw,
+  Github, Upload, Loader2, ChevronLeft, Cpu, FileCode2, Boxes, Sparkles, Trash2, RefreshCw, Wrench,
 } from 'lucide-react';
 import CircuitCanvas from '../components/CircuitCanvas';
 import ProblemsPanel from '../components/ProblemsPanel';
+import NodeDetail from '../components/NodeDetail';
 import { api, MODELS } from '../lib/api';
 import { toRFNodes, toRFEdges } from '../lib/graph';
 
@@ -23,6 +25,8 @@ export default function AnalyzerPage() {
   const [project, setProject] = useState(null);
   const [scope, setScope] = useState('root');
   const [history, setHistory] = useState([]);
+  const [detail, setDetail] = useState(null);
+  const navigate = useNavigate();
   const fileRef = useRef();
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -78,10 +82,10 @@ export default function AnalyzerPage() {
   };
 
   const onNodeClick = (_, node) => {
-    if (scope === 'root' && node.data.has_children) {
-      setScope(node.id);
-    }
+    setDetail({ node: node.data, canDrill: node.data.has_children && scope === 'root' });
   };
+
+  const drillInto = (id) => { setDetail(null); setScope(id); };
 
   const focusProblem = (p) => {
     setScope('root');
@@ -261,6 +265,9 @@ export default function AnalyzerPage() {
             {scope === 'root' ? 'system overview' : 'drill-down · ' + (project.graph.nodes.find((n) => n.id === scope)?.label || '')}
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <button data-testid="open-in-builder-btn" onClick={() => navigate('/builder', { state: { graph: project.graph, name: project.name } })} className="text-xs font-mono text-cyan-300 hover:text-cyan-200 flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-cyan-500/30 hover:border-cyan-500/60 bg-cyan-500/5">
+              <Wrench size={13} /> Open in Builder
+            </button>
             <button data-testid="new-scan-btn" onClick={() => setProject(null)} className="text-xs font-mono text-slate-400 hover:text-slate-100 flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-800 hover:border-slate-600">
               <RefreshCw size={13} /> New scan
             </button>
@@ -289,6 +296,8 @@ export default function AnalyzerPage() {
             </div>
           ))}
         </div>
+
+        {detail && <NodeDetail detail={detail} onClose={() => setDetail(null)} onDrill={drillInto} />}
       </div>
 
       {/* right panel */}

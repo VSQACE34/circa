@@ -40,6 +40,13 @@ drag-and-drop circuit canvas with connection validation, exporting to a working 
 - Drag-and-drop palette, connection-rule validation, full-stack scaffold zip export.
 - Verified: 13/13 backend tests + all frontend flows pass (iteration_1).
 
+### Iteration 2 (2026-06) — 4 enhancements
+- **Real Monitoring**: per-node health-check URL config (`/monitor/config`); monitor endpoint does real async HTTP probes (source:'live' with real latency/HTTP code), simulated fallback otherwise. Config editor UI + LIVE badge.
+- **Deeper Drill-Down**: analyzer extracts DB tables/collections + backend endpoint lists; node detail drawer shows endpoints (method badges) and tables; database nodes drill into a schema subgraph.
+- **Analyze → Builder**: "Open in Builder" loads an analyzed circuit into the editable builder canvas (skips chat).
+- **Deep Builder Codegen**: AI codegen export generates real, encapsulated per-component code via LLM. Runs as an async job (submit → poll → download) to avoid the ~60s ingress timeout.
+- Verified: 18/18 backend tests + all frontend flows pass (iteration_2); async AI export confirmed via public URL.
+
 ## Backlog / Remaining
 - P1: Real runtime monitoring (currently SIMULATED telemetry).
 - P1: Richer subgraph drill-down (deeper C4 levels, per-endpoint detail).

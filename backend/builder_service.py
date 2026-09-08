@@ -99,29 +99,35 @@ def validate_connection(source_cat: str, target_cat: str):
 
 
 # ---------------- Export ----------------
-def build_export_zip(name: str, graph_dict: dict):
-    """Generate a boilerplate full-stack scaffold zip from the circuit graph."""
+def build_export_zip(name: str, graph_dict: dict, extra_files: dict = None):
+    """Generate a boilerplate full-stack scaffold zip from the circuit graph.
+    extra_files (optional) is a dict of {relative_path: content} from AI codegen that overrides scaffold files."""
     nodes = graph_dict.get("nodes", [])
     edges = graph_dict.get("edges", [])
     cats = {n.get("category") for n in nodes}
     safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in name).strip("-") or "circuit-app"
 
+    files = {}
+    files["README.md"] = _readme(safe, nodes, edges)
+    files["circuit.json"] = json.dumps({"nodes": nodes, "edges": edges}, indent=2)
+    files["docker-compose.yml"] = _compose(cats)
+    if "frontend" in cats:
+        files["frontend/package.json"] = _fe_pkg(safe)
+        files["frontend/src/App.jsx"] = _fe_app()
+        files["frontend/src/api.js"] = _fe_api()
+        files["frontend/.env.example"] = "REACT_APP_BACKEND_URL=http://localhost:8001\n"
+    if "backend" in cats:
+        files["backend/requirements.txt"] = _be_reqs(cats)
+        files["backend/server.py"] = _be_server(cats)
+        files["backend/.env.example"] = _be_env(cats)
+        files["backend/db.py"] = _be_db()
+    if extra_files:
+        files.update(extra_files)
+
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr(f"{safe}/README.md", _readme(safe, nodes, edges))
-        z.writestr(f"{safe}/circuit.json", json.dumps({"nodes": nodes, "edges": edges}, indent=2))
-        z.writestr(f"{safe}/docker-compose.yml", _compose(cats))
-
-        if "frontend" in cats:
-            z.writestr(f"{safe}/frontend/package.json", _fe_pkg(safe))
-            z.writestr(f"{safe}/frontend/src/App.jsx", _fe_app())
-            z.writestr(f"{safe}/frontend/src/api.js", _fe_api())
-            z.writestr(f"{safe}/frontend/.env.example", "REACT_APP_BACKEND_URL=http://localhost:8001\n")
-        if "backend" in cats:
-            z.writestr(f"{safe}/backend/requirements.txt", _be_reqs(cats))
-            z.writestr(f"{safe}/backend/server.py", _be_server(cats))
-            z.writestr(f"{safe}/backend/.env.example", _be_env(cats))
-            z.writestr(f"{safe}/backend/db.py", _be_db())
+        for path, content in files.items():
+            z.writestr(f"{safe}/{path}", content)
     buf.seek(0)
     return buf.getvalue(), f"{safe}.zip"
 

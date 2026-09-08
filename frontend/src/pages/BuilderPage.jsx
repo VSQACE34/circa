@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNodesState, useEdgesState, addEdge, useReactFlow, MarkerType } from '@xyflow/react';
+import { useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Download, Loader2, Trash2, Plus, MousePointerClick } from 'lucide-react';
+import { Download, Loader2, Trash2, Plus, MousePointerClick, Sparkles } from 'lucide-react';
 import CircuitCanvas from '../components/CircuitCanvas';
 import ChatOnboarding from '../components/ChatOnboarding';
 import { api, API, MODELS } from '../lib/api';
@@ -19,6 +20,9 @@ export default function BuilderPage() {
   const [rules, setRules] = useState({});
   const [projectName, setProjectName] = useState('my-circuit-app');
   const [exporting, setExporting] = useState(false);
+  const [aiExporting, setAiExporting] = useState(false);
+  const location = useLocation();
+  const loadedRef = useRef(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -29,6 +33,17 @@ export default function BuilderPage() {
   useEffect(() => {
     api.palette().then((d) => { setPalette(d.palette); setRules(d.rules); }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (location.state?.graph && !loadedRef.current) {
+      loadedRef.current = true;
+      setStage('build');
+      setNodes(toRFNodes(location.state.graph, { editable: true }));
+      setEdges(toRFEdges(location.state.graph));
+      if (location.state.name) setProjectName(location.state.name.replace(/[^a-zA-Z0-9-_]/g, '-'));
+      toast.success('Loaded analyzed circuit', { description: 'Re-wire it and export when ready.' });
+    }
+  }, [location.state, setNodes, setEdges]);
 
   const onReady = async ({ conversation }) => {
     setStage('build');
@@ -89,27 +104,51 @@ export default function BuilderPage() {
     setEdges((eds) => eds.filter((ed) => !ed.selected));
   };
 
-  const doExport = async () => {
+  const doExport = async (ai = false) => {
     if (nodes.length === 0) return toast.error('Add components first');
-    setExporting(true);
+    ai ? setAiExporting(true) : setExporting(true);
+    if (ai) toast.info('Generating real code with AI…', { description: 'This can take up to ~90 seconds.' });
     try {
       const graph = {
         nodes: nodes.map((n) => ({ id: n.id, label: n.data.label, category: n.data.category, position: n.position })),
         edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, protocol: e.data?.protocol || '', label: e.label || '' })),
       };
-      const res = await axios.post(`${API}/builder/export`, { name: projectName, graph }, { responseType: 'blob' });
-      const blobUrl = URL.createObjectURL(res.data);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = `${projectName}.zip`;
-      a.click();
-      URL.revokeObjectURL(blobUrl);
-      toast.success('Full-stack scaffold exported', { description: `${projectName}.zip downloaded` });
+
+      if (!ai) {
+        const res = await axios.post(`${API}/builder/export`, { name: projectName, graph, ai: false }, { responseType: 'blob' });
+        triggerDownload(URL.createObjectURL(res.data), `${projectName}.zip`);
+        toast.success('Scaffold exported', { description: `${projectName}.zip downloaded` });
+        return;
+      }
+
+      // AI codegen runs as a background job (avoids the ~60s ingress timeout)
+      const { data } = await axios.post(`${API}/builder/export-job`, { name: projectName, graph, ai: true, model: model.id, provider: model.provider });
+      const jobId = data.job_id;
+      let tries = 0;
+      while (tries < 90) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const s = await axios.get(`${API}/builder/export-job/${jobId}`);
+        if (s.data.status === 'done') {
+          triggerDownload(`${API}/builder/export-job/${jobId}/download`, `${projectName}.zip`);
+          toast.success('AI full-stack code exported', { description: `${s.data.ai_files} AI-generated files + scaffold` });
+          return;
+        }
+        if (s.data.status === 'error') throw new Error(s.data.error || 'codegen failed');
+        tries++;
+      }
+      throw new Error('timed out');
     } catch (e) {
-      toast.error('Export failed');
+      toast.error(ai ? 'AI codegen failed' : 'Export failed', { description: e.message });
     } finally {
-      setExporting(false);
+      ai ? setAiExporting(false) : setExporting(false);
     }
+  };
+
+  const triggerDownload = (href, filename) => {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = filename;
+    a.click();
   };
 
   if (stage === 'chat') {
@@ -163,7 +202,10 @@ export default function BuilderPage() {
             <button data-testid="delete-selected-btn" onClick={deleteSelected} className="text-xs font-mono text-slate-400 hover:text-red-400 flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-800 hover:border-red-500/40">
               <Trash2 size={13} /> Delete
             </button>
-            <button data-testid="export-btn" onClick={doExport} disabled={exporting} className="text-sm font-semibold text-slate-950 bg-emerald-500 hover:bg-emerald-400 flex items-center gap-1.5 px-3.5 py-1.5 rounded disabled:opacity-50">
+            <button data-testid="ai-export-btn" onClick={() => doExport(true)} disabled={aiExporting || exporting} className="text-sm font-semibold text-cyan-200 border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 flex items-center gap-1.5 px-3.5 py-1.5 rounded disabled:opacity-50">
+              {aiExporting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} AI Codegen
+            </button>
+            <button data-testid="export-btn" onClick={() => doExport(false)} disabled={exporting || aiExporting} className="text-sm font-semibold text-slate-950 bg-emerald-500 hover:bg-emerald-400 flex items-center gap-1.5 px-3.5 py-1.5 rounded disabled:opacity-50">
               {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export
             </button>
           </div>
