@@ -27,6 +27,9 @@ export const api = {
   updateCircuit: (id, body) => axios.put(`${API}/circuits/${id}`, body).then((r) => r.data),
   deleteCircuit: (id) => axios.delete(`${API}/circuits/${id}`).then((r) => r.data),
   exportJobFiles: (jobId) => axios.get(`${API}/builder/export-job/${jobId}/files`).then((r) => r.data),
+  runStart: (body) => axios.post(`${API}/run/start`, body).then((r) => r.data),
+  agentToken: (id) => axios.post(`${API}/projects/${id}/agent/token`).then((r) => r.data),
+  getAgent: (id) => axios.get(`${API}/projects/${id}/agent`).then((r) => r.data),
   generate: (body) => axios.post(`${API}/builder/generate`, body).then((r) => r.data),
   validate: (body) => axios.post(`${API}/builder/validate`, body).then((r) => r.data),
 };

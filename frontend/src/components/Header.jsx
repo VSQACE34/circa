@@ -1,10 +1,11 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Cpu, Activity, ScanLine, Wrench } from 'lucide-react';
+import { Cpu, Activity, ScanLine, Wrench, Rocket } from 'lucide-react';
 
 const tabs = [
   { to: '/', label: 'Analyzer', icon: ScanLine, testid: 'nav-analyzer' },
   { to: '/builder', label: 'Builder', icon: Wrench, testid: 'nav-builder' },
+  { to: '/run', label: 'Live Run', icon: Rocket, testid: 'nav-run' },
   { to: '/monitor', label: 'Live Monitor', icon: Activity, testid: 'nav-monitor' },
 ];
 

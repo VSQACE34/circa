@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 import uuid
@@ -74,6 +74,7 @@ class Project(BaseModel):
     stats: Dict[str, Any] = Field(default_factory=dict)
     ai_summary: str = ""
     monitor_config: Dict[str, str] = Field(default_factory=dict)
+    agent_token: str = ""
 
 
 class AnalyzeGithubRequest(BaseModel):
@@ -155,3 +156,21 @@ class SavedCircuit(BaseModel):
 class CircuitSaveRequest(BaseModel):
     name: str = "Untitled Circuit"
     graph: ExportGraph
+
+
+class RunRequest(BaseModel):
+    name: str = "circuit"
+    graph: ExportGraph
+    config: Optional[Dict[str, str]] = None
+
+
+class AgentEventIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    kind: str = "info"  # request | db | llm | error | startup | info
+    source: Optional[str] = None
+    target: Optional[str] = None  # component category the activity hits
+    method: Optional[str] = None
+    path: Optional[str] = None
+    status: Optional[int] = None
+    latency_ms: Optional[float] = None
+    message: Optional[str] = None

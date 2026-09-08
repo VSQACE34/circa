@@ -18,6 +18,7 @@ export const CATEGORY = {
 export const catOf = (c) => CATEGORY[c] || CATEGORY.service;
 
 export const STATUS = {
+  idle: { color: '#475569', label: 'IDLE' },
   healthy: { color: '#10B981', label: 'HEALTHY' },
   warning: { color: '#F59E0B', label: 'WARNING' },
   fault: { color: '#EF4444', label: 'FAULT' },

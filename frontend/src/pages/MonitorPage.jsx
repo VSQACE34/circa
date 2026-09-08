@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNodesState, useEdgesState } from '@xyflow/react';
 import { toast } from 'sonner';
-import { Activity, Play, Pause, Radio, Cpu, Clock, Settings, Save, Globe, Loader2 } from 'lucide-react';
+import { Activity, Play, Pause, Radio, Cpu, Clock, Settings, Save, Globe, Loader2, PlugZap, Copy, Wifi } from 'lucide-react';
 import CircuitCanvas from '../components/CircuitCanvas';
-import { api } from '../lib/api';
+import { api, API } from '../lib/api';
 import { toRFNodes, toRFEdges } from '../lib/graph';
 import { catOf, STATUS } from '../lib/theme';
+import { pythonSnippet, expressSnippet } from '../lib/snippets';
 
 const INTERVALS = [
   { ms: 2000, label: '2s' },
@@ -24,6 +25,13 @@ export default function MonitorPage() {
   const [showConfig, setShowConfig] = useState(false);
   const [config, setConfig] = useState({});
   const [savingCfg, setSavingCfg] = useState(false);
+  const [mode, setMode] = useState('telemetry');
+  const [token, setToken] = useState('');
+  const [snippetLang, setSnippetLang] = useState('python');
+  const [agentEvents, setAgentEvents] = useState([]);
+  const [agentStatus, setAgentStatus] = useState({});
+  const [agentActive, setAgentActive] = useState({});
+  const esRef = useRef(null);
   const timer = useRef();
 
   const [nodes, setNodes] = useNodesState([]);
@@ -67,18 +75,18 @@ export default function MonitorPage() {
 
   useEffect(() => {
     clearInterval(timer.current);
-    if (live && selId) {
+    if (live && selId && mode === 'telemetry') {
       poll();
       timer.current = setInterval(poll, interval);
     }
     return () => clearInterval(timer.current);
-  }, [live, interval, selId, poll]);
+  }, [live, interval, selId, poll, mode]);
 
   // merge telemetry status into the circuit graph
   const teleMap = useMemo(() => Object.fromEntries(tele.map((t) => [t.id, t])), [tele]);
 
   useEffect(() => {
-    if (!project) return;
+    if (mode !== 'telemetry' || !project) return;
     const g = project.graph;
     const merged = {
       nodes: g.nodes.map((n) => ({ ...n, status: teleMap[n.id]?.status || n.status })),
@@ -92,7 +100,51 @@ export default function MonitorPage() {
     };
     setNodes(toRFNodes(merged));
     setEdges(toRFEdges(merged));
-  }, [project, teleMap, setNodes, setEdges]);
+  }, [project, teleMap, setNodes, setEdges, mode]);
+
+  const ingestUrl = selId ? `${API}/agent/${selId}/ingest` : '';
+  const snippet = useMemo(
+    () => (snippetLang === 'python' ? pythonSnippet(ingestUrl, token) : expressSnippet(ingestUrl, token)),
+    [snippetLang, ingestUrl, token],
+  );
+
+  // Live Agent: subscribe to the SSE event stream from the user's running app
+  useEffect(() => {
+    if (mode !== 'agent' || !selId || !project) return undefined;
+    api.getAgent(selId).then((d) => setToken(d.token)).catch((e) => console.error('agent token failed', e));
+    setAgentStatus({});
+    setAgentEvents([]);
+    const es = new EventSource(`${API}/agent/${selId}/stream`);
+    esRef.current = es;
+    es.onmessage = (msg) => {
+      let ev;
+      try { ev = JSON.parse(msg.data); } catch (e) { return; }
+      setAgentEvents((l) => [ev, ...l].slice(0, 40));
+      const node = project.graph.nodes.find((n) => n.category === ev.target);
+      const isErr = ev.kind === 'error' || (ev.status && ev.status >= 500);
+      if (node) {
+        setAgentStatus((s) => ({ ...s, [node.id]: isErr ? 'fault' : 'healthy' }));
+        const keys = project.graph.edges.filter((e) => e.target === node.id).map((e) => `${e.source}->${e.target}`);
+        if (keys.length) {
+          setAgentActive((a) => { const c = { ...a }; keys.forEach((k) => (c[k] = Date.now())); return c; });
+          setTimeout(() => setAgentActive((a) => { const c = { ...a }; keys.forEach((k) => delete c[k]); return c; }), 1300);
+        }
+      }
+    };
+    return () => { es.close(); esRef.current = null; };
+  }, [mode, selId, project]);
+
+  useEffect(() => {
+    if (mode !== 'agent' || !project) return;
+    const g = project.graph;
+    const merged = { nodes: g.nodes.map((n) => ({ ...n, status: agentStatus[n.id] || 'idle' })), edges: g.edges };
+    const rfEdges = toRFEdges(merged).map((e) => {
+      const key = `${e.source}->${e.target}`;
+      return agentActive[key] ? { ...e, className: 'wire-active', style: { ...e.style, stroke: '#22D3EE', strokeWidth: 3 } } : e;
+    });
+    setNodes(toRFNodes(merged));
+    setEdges(rfEdges);
+  }, [mode, project, agentStatus, agentActive, setNodes, setEdges]);
 
   if (projects.length === 0) {
     return (
@@ -119,31 +171,43 @@ export default function MonitorPage() {
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
 
-          <button
-            data-testid="monitor-toggle"
-            onClick={() => setLive((v) => !v)}
-            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border font-mono transition-all ${
-              live ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-slate-700 text-slate-400'
-            }`}
-          >
-            {live ? <Pause size={14} /> : <Play size={14} />} {live ? 'Live' : 'Paused'}
-          </button>
-
           <div className="flex items-center gap-1 rounded-md border border-slate-800 p-0.5">
-            {INTERVALS.map((iv) => (
-              <button
-                key={iv.ms}
-                data-testid={`interval-${iv.label}`}
-                onClick={() => setIntervalMs(iv.ms)}
-                className={`text-xs font-mono px-2 py-1 rounded ${interval === iv.ms ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}
-              >
-                {iv.label}
-              </button>
-            ))}
+            <button data-testid="mode-telemetry" onClick={() => setMode('telemetry')} className={`text-xs font-mono px-2.5 py-1 rounded ${mode === 'telemetry' ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}>Telemetry</button>
+            <button data-testid="mode-agent" onClick={() => setMode('agent')} className={`text-xs font-mono px-2.5 py-1 rounded ${mode === 'agent' ? 'bg-cyan-600/40 text-cyan-100' : 'text-slate-500 hover:text-slate-300'}`}>Live Agent</button>
           </div>
 
-          {live && <span className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400"><Radio size={12} className="led-pulse" /> streaming</span>}
-          {ts && <span className="ml-auto text-[11px] font-mono text-slate-500 hidden md:flex items-center gap-1"><Clock size={11} /> {new Date(ts).toLocaleTimeString()}</span>}
+          {mode === 'telemetry' && (
+            <>
+              <button
+                data-testid="monitor-toggle"
+                onClick={() => setLive((v) => !v)}
+                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border font-mono transition-all ${
+                  live ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-slate-700 text-slate-400'
+                }`}
+              >
+                {live ? <Pause size={14} /> : <Play size={14} />} {live ? 'Live' : 'Paused'}
+              </button>
+
+              <div className="flex items-center gap-1 rounded-md border border-slate-800 p-0.5">
+                {INTERVALS.map((iv) => (
+                  <button
+                    key={iv.ms}
+                    data-testid={`interval-${iv.label}`}
+                    onClick={() => setIntervalMs(iv.ms)}
+                    className={`text-xs font-mono px-2 py-1 rounded ${interval === iv.ms ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}
+                  >
+                    {iv.label}
+                  </button>
+                ))}
+              </div>
+
+              {live && <span className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-400"><Radio size={12} className="led-pulse" /> streaming</span>}
+              {ts && <span className="ml-auto text-[11px] font-mono text-slate-500 hidden md:flex items-center gap-1"><Clock size={11} /> {new Date(ts).toLocaleTimeString()}</span>}
+            </>
+          )}
+          {mode === 'agent' && (
+            <span className="flex items-center gap-1.5 text-[11px] font-mono text-cyan-400"><Wifi size={12} className="led-pulse" /> agent listening</span>
+          )}
         </div>
 
         <div className="h-full pt-12">
@@ -151,8 +215,10 @@ export default function MonitorPage() {
         </div>
       </div>
 
-      {/* telemetry panel */}
-      <div className="w-full md:w-[340px] shrink-0 border-t md:border-t-0 md:border-l border-slate-800 bg-slate-950/60 flex flex-col max-h-[45vh] md:max-h-none">
+      {/* right panel */}
+      <div className="w-full md:w-[360px] shrink-0 border-t md:border-t-0 md:border-l border-slate-800 bg-slate-950/60 flex flex-col max-h-[45vh] md:max-h-none">
+        {mode === 'telemetry' ? (
+        <>
         <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
           <Cpu size={15} className="text-emerald-400" />
           <span className="font-mono text-sm font-semibold text-slate-200">Telemetry</span>
@@ -216,6 +282,43 @@ export default function MonitorPage() {
             );
           })}
         </div>
+        </>
+        ) : (
+        <>
+          <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
+            <PlugZap size={15} className="text-cyan-400" />
+            <span className="font-mono text-sm font-semibold text-slate-200">Live Agent</span>
+          </div>
+          <div className="border-b border-slate-800 p-3 space-y-2">
+            <div className="text-[11px] font-mono text-slate-500">Paste into your running app — every request streams here live (works offline on your PC):</div>
+            <div className="flex items-center gap-1 rounded-md border border-slate-800 p-0.5 w-max">
+              {[['python', 'FastAPI'], ['express', 'Express']].map(([l, lbl]) => (
+                <button key={l} data-testid={`snippet-${l}`} onClick={() => setSnippetLang(l)} className={`text-xs font-mono px-2.5 py-1 rounded ${snippetLang === l ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}>{lbl}</button>
+              ))}
+            </div>
+            <div className="relative">
+              <pre className="text-[10px] font-mono bg-slate-950 border border-slate-800 rounded p-2.5 max-h-56 overflow-auto text-slate-300 whitespace-pre-wrap" data-testid="agent-snippet">{snippet}</pre>
+              <button data-testid="copy-snippet-btn" onClick={() => { navigator.clipboard.writeText(snippet); toast.success('Agent snippet copied'); }} className="absolute top-2 right-2 text-slate-400 hover:text-slate-100 bg-slate-900/80 rounded p-1"><Copy size={13} /></button>
+            </div>
+            <div className="text-[10px] font-mono text-slate-600 break-all">POST {ingestUrl}</div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1.5" data-testid="agent-feed">
+            {agentEvents.length === 0 && <div className="text-xs text-slate-600 text-center py-8">Waiting for events…<br />start your app and hit an endpoint.</div>}
+            {agentEvents.map((ev) => {
+              const isErr = ev.kind === 'error' || (ev.status && ev.status >= 500);
+              return (
+                <div key={ev.id} className="flex items-center gap-2 text-xs font-mono rounded bg-slate-900/60 border border-slate-800 px-2 py-1.5">
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] shrink-0 ${isErr ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/15 text-emerald-300'}`}>{ev.kind}</span>
+                  {ev.method && <span className="text-slate-400 shrink-0">{ev.method}</span>}
+                  <span className="text-slate-200 truncate flex-1">{ev.path || ev.message || ev.target}</span>
+                  {ev.status ? <span className={isErr ? 'text-red-300' : 'text-slate-400'}>{ev.status}</span> : null}
+                  {ev.latency_ms != null ? <span className="text-slate-500 shrink-0">{ev.latency_ms}ms</span> : null}
+                </div>
+              );
+            })}
+          </div>
+        </>
+        )}
       </div>
     </div>
   );

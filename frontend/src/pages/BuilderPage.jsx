@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNodesState, useEdgesState, addEdge, useReactFlow, MarkerType } from '@xyflow/react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Download, Loader2, Trash2, Plus, MousePointerClick, Sparkles, Save, FolderOpen, ChevronDown } from 'lucide-react';
+import { Download, Loader2, Trash2, Plus, MousePointerClick, Sparkles, Save, FolderOpen, ChevronDown, Rocket } from 'lucide-react';
 import CircuitCanvas from '../components/CircuitCanvas';
 import ChatOnboarding from '../components/ChatOnboarding';
 import CodegenPreview from '../components/CodegenPreview';
@@ -28,6 +28,7 @@ export default function BuilderPage() {
   const [savingCircuit, setSavingCircuit] = useState(false);
   const [showCircuits, setShowCircuits] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const loadedRef = useRef(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -273,6 +274,9 @@ export default function BuilderPage() {
             </button>
             <button data-testid="delete-selected-btn" onClick={deleteSelected} className="text-xs font-mono text-slate-400 hover:text-red-400 flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-800 hover:border-red-500/40">
               <Trash2 size={13} /> Delete
+            </button>
+            <button data-testid="run-diagnose-btn" onClick={() => { if (nodes.length === 0) return toast.error('Add components first'); navigate('/run', { state: { graph: getGraph(), name: projectName } }); }} className="text-sm font-semibold text-cyan-200 border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 flex items-center gap-1.5 px-3.5 py-1.5 rounded">
+              <Rocket size={14} /> Run &amp; Diagnose
             </button>
             <button data-testid="ai-export-btn" onClick={() => doExport(true)} disabled={aiExporting || exporting} className="text-sm font-semibold text-cyan-200 border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 flex items-center gap-1.5 px-3.5 py-1.5 rounded disabled:opacity-50">
               {aiExporting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} AI Codegen

@@ -12,7 +12,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 import requests
-from fastapi import FastAPI, APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, APIRouter, UploadFile, File, Form, HTTPException, Header
 from fastapi.responses import StreamingResponse, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -23,9 +23,10 @@ load_dotenv(ROOT_DIR / ".env")
 
 from models import (Project, AnalyzeGithubRequest, BuilderChatRequest, GenerateCircuitRequest,
                     ExportRequest, ValidateRequest, MonitorConfigRequest, FixRequest,
-                    SavedCircuit, CircuitSaveRequest)
+                    SavedCircuit, CircuitSaveRequest, RunRequest, AgentEventIn)
 import analyzer
 import builder_service
+import live_service
 import llm_service
 
 mongo_url = os.environ["MONGO_URL"]
@@ -455,6 +456,99 @@ async def update_circuit(cid: str, req: CircuitSaveRequest):
 async def delete_circuit(cid: str):
     await db.circuits.delete_one({"id": cid})
     return {"deleted": True}
+
+
+# ---------------- Live Agent (real-time monitoring of the user's running app) ----------------
+@api_router.post("/projects/{project_id}/agent/token")
+async def gen_agent_token(project_id: str):
+    doc = await db.projects.find_one({"id": project_id}, {"_id": 0, "id": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    token = "cir_" + uuid.uuid4().hex
+    await db.projects.update_one({"id": project_id}, {"$set": {"agent_token": token}})
+    live_service.TOKENS[project_id] = token
+    return {"token": token}
+
+
+@api_router.get("/projects/{project_id}/agent")
+async def get_agent(project_id: str):
+    doc = await db.projects.find_one({"id": project_id}, {"_id": 0, "agent_token": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    token = doc.get("agent_token") or ""
+    if not token:
+        token = "cir_" + uuid.uuid4().hex
+        await db.projects.update_one({"id": project_id}, {"$set": {"agent_token": token}})
+    live_service.TOKENS[project_id] = token
+    return {"token": token}
+
+
+@api_router.post("/agent/{project_id}/ingest")
+async def agent_ingest(project_id: str, evt: AgentEventIn, x_circuit_token: str = Header(None)):
+    token = live_service.TOKENS.get(project_id)
+    if token is None:
+        doc = await db.projects.find_one({"id": project_id}, {"_id": 0, "agent_token": 1})
+        token = (doc or {}).get("agent_token") or ""
+        live_service.TOKENS[project_id] = token
+    if not token or x_circuit_token != token:
+        raise HTTPException(status_code=401, detail="Invalid agent token")
+    stored = live_service.record_agent_event(project_id, evt.model_dump(exclude_none=True))
+    return {"ok": True, "id": stored["id"]}
+
+
+@api_router.get("/agent/{project_id}/events")
+async def agent_events(project_id: str):
+    return {"events": list(live_service.AGENT_EVENTS[project_id])[-60:]}
+
+
+@api_router.get("/agent/{project_id}/stream")
+async def agent_stream(project_id: str):
+    async def gen():
+        q = live_service.agent_subscribe(project_id)
+        try:
+            for evt in list(live_service.AGENT_EVENTS[project_id])[-30:]:
+                yield f"data: {json.dumps(evt)}\n\n"
+            while True:
+                try:
+                    evt = await asyncio.wait_for(q.get(), timeout=15)
+                    yield f"data: {json.dumps(evt)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+        finally:
+            live_service.agent_unsubscribe(project_id, q)
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ---------------- Live Run Diagnostics (boot & health a circuit) ----------------
+@api_router.post("/run/start")
+async def run_start(req: RunRequest):
+    run_id = str(uuid.uuid4())
+    live_service.RUNS[run_id] = asyncio.Queue()
+    asyncio.create_task(live_service.run_diagnostics(run_id, req.graph.model_dump(), req.config))
+    return {"run_id": run_id}
+
+
+@api_router.get("/run/{run_id}/stream")
+async def run_stream(run_id: str):
+    q = live_service.RUNS.get(run_id)
+    if q is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    async def gen():
+        try:
+            while True:
+                item = await asyncio.wait_for(q.get(), timeout=30)
+                if item is None:
+                    yield f"data: {json.dumps({'type': 'end'})}\n\n"
+                    break
+                yield f"data: {json.dumps(item)}\n\n"
+        except asyncio.TimeoutError:
+            yield f"data: {json.dumps({'type': 'end'})}\n\n"
+        finally:
+            live_service.RUNS.pop(run_id, None)
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 app.include_router(api_router)

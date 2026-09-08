@@ -6,6 +6,7 @@ import Header from './components/Header';
 import AnalyzerPage from './pages/AnalyzerPage';
 import BuilderPage from './pages/BuilderPage';
 import MonitorPage from './pages/MonitorPage';
+import RunPage from './pages/RunPage';
 
 const TOAST_OPTIONS = { style: { background: '#0f172a', border: '1px solid #1e2d42', color: '#f8fafc' } };
 
@@ -19,6 +20,7 @@ function App() {
             <Route path="/" element={<AnalyzerPage />} />
             <Route path="/builder" element={<BuilderPage />} />
             <Route path="/monitor" element={<MonitorPage />} />
+            <Route path="/run" element={<RunPage />} />
           </Routes>
         </ReactFlowProvider>
       </BrowserRouter>
