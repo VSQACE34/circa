@@ -3,9 +3,10 @@ import { useNodesState, useEdgesState, addEdge, useReactFlow, MarkerType } from 
 import { useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Download, Loader2, Trash2, Plus, MousePointerClick, Sparkles } from 'lucide-react';
+import { Download, Loader2, Trash2, Plus, MousePointerClick, Sparkles, Save, FolderOpen, ChevronDown } from 'lucide-react';
 import CircuitCanvas from '../components/CircuitCanvas';
 import ChatOnboarding from '../components/ChatOnboarding';
+import CodegenPreview from '../components/CodegenPreview';
 import { api, API, MODELS } from '../lib/api';
 import { catOf } from '../lib/theme';
 import { toRFNodes, toRFEdges } from '../lib/graph';
@@ -21,6 +22,11 @@ export default function BuilderPage() {
   const [projectName, setProjectName] = useState('my-circuit-app');
   const [exporting, setExporting] = useState(false);
   const [aiExporting, setAiExporting] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [circuits, setCircuits] = useState([]);
+  const [currentCircuitId, setCurrentCircuitId] = useState(null);
+  const [savingCircuit, setSavingCircuit] = useState(false);
+  const [showCircuits, setShowCircuits] = useState(false);
   const location = useLocation();
   const loadedRef = useRef(false);
 
@@ -33,6 +39,11 @@ export default function BuilderPage() {
   useEffect(() => {
     api.palette().then((d) => { setPalette(d.palette); setRules(d.rules); }).catch(() => {});
   }, []);
+
+  const refreshCircuits = useCallback(() => {
+    api.circuits().then(setCircuits).catch((e) => console.error('load circuits failed', e));
+  }, []);
+  useEffect(() => { refreshCircuits(); }, [refreshCircuits]);
 
   useEffect(() => {
     if (location.state?.graph && !loadedRef.current) {
@@ -104,23 +115,59 @@ export default function BuilderPage() {
     setEdges((eds) => eds.filter((ed) => !ed.selected));
   };
 
+  const getGraph = () => ({
+    nodes: nodes.map((n) => ({ id: n.id, label: n.data.label, category: n.data.category, position: n.position })),
+    edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, protocol: e.data?.protocol || '', label: e.label || '' })),
+  });
+
+  const saveCircuit = async () => {
+    if (nodes.length === 0) return toast.error('Nothing to save');
+    setSavingCircuit(true);
+    try {
+      const body = { name: projectName, graph: getGraph() };
+      const saved = currentCircuitId
+        ? await api.updateCircuit(currentCircuitId, body)
+        : await api.createCircuit(body);
+      setCurrentCircuitId(saved.id);
+      refreshCircuits();
+      toast.success('Circuit saved', { description: `${saved.name} · v${saved.version}` });
+    } catch (e) {
+      toast.error('Save failed', { description: e.message });
+    } finally { setSavingCircuit(false); }
+  };
+
+  const openCircuit = async (id) => {
+    setShowCircuits(false);
+    try {
+      const c = await api.circuit(id);
+      setStage('build');
+      setNodes(toRFNodes(c.graph, { editable: true }));
+      setEdges(toRFEdges(c.graph));
+      setProjectName(c.name);
+      setCurrentCircuitId(c.id);
+      toast.success('Circuit loaded', { description: `${c.name} · v${c.version}` });
+    } catch (e) { toast.error('Could not load circuit'); }
+  };
+
+  const removeCircuit = async (id, e) => {
+    e.stopPropagation();
+    await api.deleteCircuit(id);
+    if (currentCircuitId === id) setCurrentCircuitId(null);
+    refreshCircuits();
+  };
+
   const doExport = async (ai = false) => {
     if (nodes.length === 0) return toast.error('Add components first');
     ai ? setAiExporting(true) : setExporting(true);
     if (ai) toast.info('Generating real code with AI…', { description: 'This can take up to ~90 seconds.' });
     try {
-      const graph = {
-        nodes: nodes.map((n) => ({ id: n.id, label: n.data.label, category: n.data.category, position: n.position })),
-        edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, protocol: e.data?.protocol || '', label: e.label || '' })),
-      };
-
+      const graph = getGraph();
       if (!ai) {
         const res = await axios.post(`${API}/builder/export`, { name: projectName, graph, ai: false }, { responseType: 'blob' });
         triggerDownload(URL.createObjectURL(res.data), `${projectName}.zip`);
         toast.success('Scaffold exported', { description: `${projectName}.zip downloaded` });
         return;
       }
-
       // AI codegen runs as a background job (avoids the ~60s ingress timeout)
       const { data } = await axios.post(`${API}/builder/export-job`, { name: projectName, graph, ai: true, model: model.id, provider: model.provider });
       const jobId = data.job_id;
@@ -129,8 +176,9 @@ export default function BuilderPage() {
         await new Promise((r) => setTimeout(r, 2000));
         const s = await axios.get(`${API}/builder/export-job/${jobId}`);
         if (s.data.status === 'done') {
-          triggerDownload(`${API}/builder/export-job/${jobId}/download`, `${projectName}.zip`);
-          toast.success('AI full-stack code exported', { description: `${s.data.ai_files} AI-generated files + scaffold` });
+          const f = await api.exportJobFiles(jobId);
+          setPreview({ jobId, files: f.files, filename: f.filename, aiCount: f.ai_files });
+          toast.success('Code generated', { description: `${f.ai_files} AI files — preview & download` });
           return;
         }
         if (s.data.status === 'error') throw new Error(s.data.error || 'codegen failed');
@@ -198,7 +246,31 @@ export default function BuilderPage() {
             className="bg-slate-950/60 border border-slate-700 rounded px-2.5 py-1.5 text-sm font-mono text-slate-100 outline-none focus:border-emerald-500/50 w-52"
           />
           <div className="text-[11px] font-mono text-slate-500">{nodes.length} chips · {edges.length} traces</div>
+
+          <div className="relative">
+            <button data-testid="circuits-menu-btn" onClick={() => { setShowCircuits((v) => !v); if (!showCircuits) refreshCircuits(); }} className="text-xs font-mono text-slate-300 hover:text-slate-100 flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-800 hover:border-slate-600">
+              <FolderOpen size={13} /> My Circuits <ChevronDown size={12} />
+            </button>
+            {showCircuits && (
+              <div className="absolute left-0 top-full mt-1 w-64 max-h-72 overflow-y-auto glass rounded-md border border-slate-800 shadow-xl z-30 p-1.5" data-testid="circuits-menu">
+                {circuits.length === 0 && <div className="text-[11px] text-slate-500 px-2 py-3 text-center">No saved circuits yet</div>}
+                {circuits.map((c) => (
+                  <div key={c.id} data-testid={`circuit-item-${c.id}`} onClick={() => openCircuit(c.id)} className="group flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-800/60 cursor-pointer">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs text-slate-100 truncate">{c.name}</div>
+                      <div className="text-[10px] font-mono text-slate-500">v{c.version}</div>
+                    </div>
+                    <button onClick={(e) => removeCircuit(c.id, e)} data-testid={`circuit-del-${c.id}`} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400"><Trash2 size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="ml-auto flex items-center gap-2">
+            <button data-testid="save-circuit-btn" onClick={saveCircuit} disabled={savingCircuit} className="text-xs font-mono text-emerald-300 hover:text-emerald-200 flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-emerald-500/30 hover:border-emerald-500/60 bg-emerald-500/5 disabled:opacity-50">
+              {savingCircuit ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save
+            </button>
             <button data-testid="delete-selected-btn" onClick={deleteSelected} className="text-xs font-mono text-slate-400 hover:text-red-400 flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-800 hover:border-red-500/40">
               <Trash2 size={13} /> Delete
             </button>
@@ -233,6 +305,16 @@ export default function BuilderPage() {
           </div>
         )}
       </div>
+
+      {preview && (
+        <CodegenPreview
+          files={preview.files}
+          filename={preview.filename}
+          aiCount={preview.aiCount}
+          onClose={() => setPreview(null)}
+          onDownload={() => triggerDownload(`${API}/builder/export-job/${preview.jobId}/download`, preview.filename)}
+        />
+      )}
     </div>
   );
 }

@@ -99,9 +99,8 @@ def validate_connection(source_cat: str, target_cat: str):
 
 
 # ---------------- Export ----------------
-def build_export_zip(name: str, graph_dict: dict, extra_files: dict = None):
-    """Generate a boilerplate full-stack scaffold zip from the circuit graph.
-    extra_files (optional) is a dict of {relative_path: content} from AI codegen that overrides scaffold files."""
+def build_export_files(name: str, graph_dict: dict, extra_files: dict = None):
+    """Return (files_dict, safe_name) for the scaffold + optional AI files."""
     nodes = graph_dict.get("nodes", [])
     edges = graph_dict.get("edges", [])
     cats = {n.get("category") for n in nodes}
@@ -123,13 +122,83 @@ def build_export_zip(name: str, graph_dict: dict, extra_files: dict = None):
         files["backend/db.py"] = _be_db()
     if extra_files:
         files.update(extra_files)
+    return files, safe
 
+
+def zip_files(safe: str, files: dict):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for path, content in files.items():
             z.writestr(f"{safe}/{path}", content)
     buf.seek(0)
     return buf.getvalue(), f"{safe}.zip"
+
+
+def build_export_zip(name: str, graph_dict: dict, extra_files: dict = None):
+    """Generate a boilerplate full-stack scaffold zip from the circuit graph.
+    extra_files (optional) is a dict of {relative_path: content} from AI codegen that overrides scaffold files."""
+    files, safe = build_export_files(name, graph_dict, extra_files)
+    return zip_files(safe, files)
+
+
+# ---------------- Fault auto-fix engine ----------------
+def fix_problem(graph: dict, problems: list, problem_id: str):
+    """Apply a deterministic graph-level fix for a fixable problem. Returns (graph, problems, fixed_title)."""
+    prob = next((p for p in problems if p.get("id") == problem_id), None)
+    if not prob:
+        return graph, problems, None
+    title = (prob.get("title") or "").lower()
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+    by_id = {n["id"]: n for n in nodes}
+
+    def cat_id(cat):
+        return next((n["id"] for n in nodes if n.get("category") == cat), None)
+
+    def set_status(node_id, status):
+        if node_id in by_id:
+            by_id[node_id]["status"] = status
+
+    def edge_exists(s, t):
+        return any(e["source"] == s and e["target"] == t for e in edges)
+
+    def add_edge(s, t, label, proto):
+        if s in by_id and t in by_id and not edge_exists(s, t):
+            edges.append({"id": f"e_{s}_{t}", "source": s, "target": t,
+                          "label": label, "status": "healthy", "protocol": proto})
+
+    backend_id = cat_id("backend")
+    frontend_id = cat_id("frontend")
+    client_id = cat_id("client")
+
+    if "cors" in title:
+        for e in edges:
+            if e.get("id") == "e_frontend_backend" or (e["source"] == frontend_id and e["target"] == backend_id):
+                e["status"] = "healthy"
+    elif "no backend" in title:
+        if not backend_id:
+            backend_id = "n_backend"
+            nodes.append({"id": backend_id, "label": "Backend", "category": "backend",
+                          "status": "healthy", "position": {"x": 640, "y": 150},
+                          "meta": {}, "has_children": False, "type": "chip"})
+            by_id[backend_id] = nodes[-1]
+        if frontend_id:
+            add_edge(frontend_id, backend_id, "REST API", "HTTP")
+            set_status(frontend_id, "healthy")
+    elif "orphan" in title:
+        target = prob.get("target_id")
+        hub = backend_id or client_id or (nodes[0]["id"] if nodes else None)
+        if hub and target and hub != target:
+            add_edge(hub, target, "link", "internal")
+        set_status(target, "healthy")
+    else:
+        # env vars / hardcoded secrets / generic: acknowledge and clear the target's fault state
+        set_status(prob.get("target_id"), "healthy")
+
+    problems = [p for p in problems if p.get("id") != problem_id]
+    graph["nodes"] = nodes
+    graph["edges"] = edges
+    return graph, problems, prob.get("title")
 
 
 def _readme(name, nodes, edges):

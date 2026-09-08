@@ -21,7 +21,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-from models import (Project, AnalyzeGithubRequest, BuilderChatRequest, GenerateCircuitRequest)
+from models import (Project, AnalyzeGithubRequest, BuilderChatRequest, GenerateCircuitRequest,
+                    ExportRequest, ValidateRequest, MonitorConfigRequest, FixRequest,
+                    SavedCircuit, CircuitSaveRequest)
 import analyzer
 import builder_service
 import llm_service
@@ -243,12 +245,27 @@ async def delete_project(project_id: str):
 
 
 @api_router.post("/projects/{project_id}/monitor/config")
-async def set_monitor_config(project_id: str, payload: dict):
-    config = {k: v for k, v in (payload.get("config", {}) or {}).items() if v}
+async def set_monitor_config(project_id: str, req: MonitorConfigRequest):
+    config = {k: v for k, v in req.config.items() if v}
     res = await db.projects.update_one({"id": project_id}, {"$set": {"monitor_config": config}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"saved": True, "config": config}
+
+
+@api_router.post("/projects/{project_id}/fix")
+async def fix_project(project_id: str, req: FixRequest):
+    doc = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    graph, problems, fixed_title = builder_service.fix_problem(
+        doc.get("graph", {}), doc.get("problems", []), req.problem_id)
+    if fixed_title is None:
+        raise HTTPException(status_code=404, detail="Problem not found")
+    await db.projects.update_one({"id": project_id}, {"$set": {"graph": graph, "problems": problems}})
+    doc["graph"] = graph
+    doc["problems"] = problems
+    return {"project": doc, "fixed": fixed_title}
 
 
 @api_router.get("/projects/{project_id}/monitor")
@@ -325,21 +342,18 @@ async def builder_generate(req: GenerateCircuitRequest):
 
 
 @api_router.post("/builder/validate")
-async def builder_validate(payload: dict):
-    ok = builder_service.validate_connection(payload.get("source_cat", ""), payload.get("target_cat", ""))
+async def builder_validate(req: ValidateRequest):
+    ok = builder_service.validate_connection(req.source_cat, req.target_cat)
     return {"valid": ok}
 
 
 @api_router.post("/builder/export")
-async def builder_export(payload: dict):
-    name = payload.get("name", "circuit-app")
-    graph = payload.get("graph", {})
-    ai = bool(payload.get("ai", False))
+async def builder_export(req: ExportRequest):
+    graph = req.graph.model_dump()
     extra = {}
-    if ai:
-        extra = await _ai_codegen(name, graph, payload.get("model", "claude-sonnet-4-6"),
-                                  payload.get("provider", "anthropic"))
-    data, filename = await asyncio.to_thread(builder_service.build_export_zip, name, graph, extra)
+    if req.ai:
+        extra = await _ai_codegen(req.name, graph, req.model, req.provider)
+    data, filename = await asyncio.to_thread(builder_service.build_export_zip, req.name, graph, extra)
     return Response(content=data, media_type="application/zip",
                     headers={"Content-Disposition": f"attachment; filename={filename}",
                              "X-AI-Files": str(len(extra))})
@@ -354,21 +368,21 @@ async def _export_worker(job_id, name, graph, ai, model, provider):
         extra = {}
         if ai:
             extra = await _ai_codegen(name, graph, model, provider)
-        data, filename = await asyncio.to_thread(builder_service.build_export_zip, name, graph, extra)
-        EXPORT_JOBS[job_id] = {"status": "done", "data": data, "filename": filename, "ai_files": len(extra)}
+        files, safe = await asyncio.to_thread(builder_service.build_export_files, name, graph, extra)
+        data, filename = await asyncio.to_thread(builder_service.zip_files, safe, files)
+        EXPORT_JOBS[job_id] = {"status": "done", "data": data, "filename": filename,
+                               "ai_files": len(extra), "files": files}
     except Exception as e:
         logger.warning(f"export job failed: {e}")
         EXPORT_JOBS[job_id] = {"status": "error", "error": str(e)}
 
 
 @api_router.post("/builder/export-job")
-async def builder_export_job(payload: dict):
+async def builder_export_job(req: ExportRequest):
     job_id = str(uuid.uuid4())
     EXPORT_JOBS[job_id] = {"status": "pending"}
     asyncio.create_task(_export_worker(
-        job_id, payload.get("name", "circuit-app"), payload.get("graph", {}),
-        bool(payload.get("ai", False)), payload.get("model", "claude-sonnet-4-6"),
-        payload.get("provider", "anthropic")))
+        job_id, req.name, req.graph.model_dump(), req.ai, req.model, req.provider))
     return {"job_id": job_id}
 
 
@@ -380,15 +394,67 @@ async def builder_export_status(job_id: str):
     return {"status": job["status"], "ai_files": job.get("ai_files", 0), "error": job.get("error")}
 
 
+@api_router.get("/builder/export-job/{job_id}/files")
+async def builder_export_job_files(job_id: str):
+    job = EXPORT_JOBS.get(job_id)
+    if not job or job.get("status") != "done":
+        raise HTTPException(status_code=404, detail="Not ready")
+    files = job.get("files", {})
+    return {"filename": job.get("filename"), "ai_files": job.get("ai_files", 0),
+            "files": [{"path": p, "content": c} for p, c in files.items()]}
+
+
 @api_router.get("/builder/export-job/{job_id}/download")
 async def builder_export_download(job_id: str):
     job = EXPORT_JOBS.get(job_id)
     if not job or job.get("status") != "done":
         raise HTTPException(status_code=404, detail="Not ready")
-    EXPORT_JOBS.pop(job_id, None)
     return Response(content=job["data"], media_type="application/zip",
                     headers={"Content-Disposition": f"attachment; filename={job['filename']}",
                              "X-AI-Files": str(job.get("ai_files", 0))})
+
+
+# ---------------- Saved circuits ----------------
+def _iso_now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+@api_router.post("/circuits")
+async def create_circuit(req: CircuitSaveRequest):
+    c = SavedCircuit(name=req.name, graph=req.graph)
+    await db.circuits.insert_one(c.model_dump())
+    return c.model_dump()
+
+
+@api_router.get("/circuits")
+async def list_circuits():
+    return await db.circuits.find({}, {"_id": 0, "graph": 0}).sort("updated_at", -1).to_list(100)
+
+
+@api_router.get("/circuits/{cid}")
+async def get_circuit(cid: str):
+    doc = await db.circuits.find_one({"id": cid}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Circuit not found")
+    return doc
+
+
+@api_router.put("/circuits/{cid}")
+async def update_circuit(cid: str, req: CircuitSaveRequest):
+    doc = await db.circuits.find_one({"id": cid}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Circuit not found")
+    upd = {"name": req.name, "graph": req.graph.model_dump(),
+           "version": doc.get("version", 1) + 1, "updated_at": _iso_now()}
+    await db.circuits.update_one({"id": cid}, {"$set": upd})
+    doc.update(upd)
+    return doc
+
+
+@api_router.delete("/circuits/{cid}")
+async def delete_circuit(cid: str):
+    await db.circuits.delete_one({"id": cid})
+    return {"deleted": True}
 
 
 app.include_router(api_router)

@@ -87,6 +87,16 @@ export default function AnalyzerPage() {
 
   const drillInto = (id) => { setDetail(null); setScope(id); };
 
+  const handleFix = async (p) => {
+    try {
+      const res = await api.fixProblem(project.id, p.id);
+      setProject(res.project);
+      toast.success('Fix applied & re-checked', { description: res.fixed });
+    } catch (e) {
+      toast.error('Could not apply fix', { description: e?.response?.data?.detail || e.message });
+    }
+  };
+
   const focusProblem = (p) => {
     setScope('root');
     setTimeout(() => {
@@ -309,7 +319,7 @@ export default function AnalyzerPage() {
           </div>
         )}
         <div className="flex-1 min-h-0">
-          <ProblemsPanel problems={project.problems} onFocus={focusProblem} />
+          <ProblemsPanel problems={project.problems} onFocus={focusProblem} onFix={handleFix} />
         </div>
       </div>
     </div>

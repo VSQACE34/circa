@@ -266,16 +266,16 @@ def analyze_tree(root: Path, project_name: str):
         add_edge("backend", f"storage{i}", "read/write", "HTTPS")
 
     # ---------- Problem detection (structural + basic code) ----------
-    def add_problem(sev, tid, ttype, title, desc, fix, scope="root"):
+    def add_problem(sev, tid, ttype, title, desc, fix, scope="root", fixable=False):
         problems.append(Problem(severity=sev, target_id=tid, target_type=ttype, scope=scope,
-                                title=title, description=desc, fix=fix))
+                                title=title, description=desc, fix=fix, fixable=fixable))
 
     # frontend calls but no backend
     if has_frontend and api_calls and not has_backend:
         add_problem("fault", node_ids.get("frontend", ""), "node",
                     "Frontend has no backend to talk to",
                     f"Detected {len(api_calls)} API call(s) in the frontend but no backend server was found.",
-                    "Add a backend service, or point the frontend at an existing API.")
+                    "Add a backend service, or point the frontend at an existing API.", fixable=True)
         for n in nodes:
             if n.id == node_ids.get("frontend"):
                 n.status = "fault"
@@ -290,7 +290,7 @@ def analyze_tree(root: Path, project_name: str):
         add_problem("warning", "e_frontend_backend", "edge",
                     "CORS not configured",
                     "Frontend and backend detected but no CORS middleware/headers were found on the backend.",
-                    "Enable CORS on the backend so the browser can call the API.")
+                    "Enable CORS on the backend so the browser can call the API.", fixable=True)
         for e in edges:
             if e.id == "e_frontend_backend":
                 e.status = "warning"
@@ -302,7 +302,7 @@ def analyze_tree(root: Path, project_name: str):
         add_problem("warning", tgt, "node",
                     f"{len(missing_env)} environment variable(s) not defined",
                     "Referenced in code but missing from any .env file: " + ", ".join(sorted(missing_env)[:8]),
-                    "Add these keys to the appropriate .env file.")
+                    "Add these keys to the appropriate .env file.", fixable=True)
         for n in nodes:
             if n.id == tgt and n.status == "healthy":
                 n.status = "warning"
@@ -313,7 +313,7 @@ def analyze_tree(root: Path, project_name: str):
         add_problem("fault", tgt, "node",
                     f"{len(hardcoded)} hardcoded secret/URL detected",
                     "Example: " + "; ".join([f"{r}: {v}" for r, v in hardcoded[:3]]),
-                    "Move secrets and absolute URLs into environment variables.")
+                    "Move secrets and absolute URLs into environment variables.", fixable=True)
 
     # orphan nodes (no edges)
     connected = set()
@@ -325,7 +325,7 @@ def analyze_tree(root: Path, project_name: str):
             add_problem("warning", n.id, "node",
                         f"Orphan component: {n.label}",
                         "This component is not connected to anything else in the graph.",
-                        "Wire it to the component that uses it, or remove it.")
+                        "Wire it to the component that uses it, or remove it.", fixable=True)
             if n.status == "healthy":
                 n.status = "warning"
 

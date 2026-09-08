@@ -7,7 +7,7 @@ const SEV = {
   info: { color: '#06B6D4', Icon: Info, label: 'INFO' },
 };
 
-export default function ProblemsPanel({ problems = [], onFocus, activeScope = 'root' }) {
+export default function ProblemsPanel({ problems = [], onFocus, onFix, activeScope = 'root' }) {
   const list = problems;
   const faults = list.filter((p) => p.severity === 'fault').length;
   const warns = list.filter((p) => p.severity === 'warning').length;
@@ -34,15 +34,15 @@ export default function ProblemsPanel({ problems = [], onFocus, activeScope = 'r
           const sev = SEV[p.severity] || SEV.info;
           const Icon = sev.Icon;
           return (
-            <button
+            <div
               key={p.id}
               onClick={() => onFocus && onFocus(p)}
               data-testid={`problem-${p.id}`}
-              className="w-full text-left rounded-md border border-slate-800 bg-slate-900/60 p-3 hover:border-slate-600 hover:bg-slate-800/60 transition-all"
+              className="w-full text-left rounded-md border border-slate-800 bg-slate-900/60 p-3 hover:border-slate-600 hover:bg-slate-800/60 transition-all cursor-pointer"
             >
               <div className="flex items-start gap-2.5">
                 <Icon size={16} style={{ color: sev.color }} className="mt-0.5 shrink-0" />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-slate-100">{p.title}</div>
                   {p.description && (
                     <div className="text-xs text-slate-400 mt-1 leading-relaxed">{p.description}</div>
@@ -53,9 +53,18 @@ export default function ProblemsPanel({ problems = [], onFocus, activeScope = 'r
                       <span>{p.fix}</span>
                     </div>
                   )}
+                  {p.fixable && onFix && (
+                    <button
+                      data-testid={`fix-${p.id}`}
+                      onClick={(e) => { e.stopPropagation(); onFix(p); }}
+                      className="mt-2.5 inline-flex items-center gap-1.5 text-[11px] font-mono font-semibold text-slate-950 bg-emerald-500 hover:bg-emerald-400 rounded px-2.5 py-1 transition-colors"
+                    >
+                      <Wrench size={11} /> Apply fix & re-check
+                    </button>
+                  )}
                 </div>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

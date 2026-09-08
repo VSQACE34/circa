@@ -86,9 +86,9 @@ def test_export_job_scaffold_only_flow():
     zf = zipfile.ZipFile(io.BytesIO(d.content))
     assert any("README.md" in n for n in zf.namelist())
 
-    # second download should 404 (job popped)
+    # Iteration 4: download no longer pops the job so files+download both work
     d2 = requests.get(f"{API}/builder/export-job/{job_id}/download", timeout=15)
-    assert d2.status_code == 404
+    assert d2.status_code == 200
 
 
 def test_export_job_status_404_for_missing_id():

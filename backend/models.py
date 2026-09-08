@@ -51,6 +51,7 @@ class Problem(BaseModel):
     title: str
     description: str = ""
     fix: str = ""
+    fixable: bool = False
 
 
 class Graph(BaseModel):
@@ -98,3 +99,59 @@ class BuilderChatRequest(BaseModel):
 class GenerateCircuitRequest(BaseModel):
     session_id: str
     answers: Dict[str, Any] = Field(default_factory=dict)
+
+
+# ---- Typed request models for builder / monitor / circuits ----
+class ExportNode(BaseModel):
+    id: str
+    label: str = ""
+    category: str = "service"
+    position: Optional[Dict[str, Any]] = None
+
+
+class ExportEdge(BaseModel):
+    id: str = ""
+    source: str
+    target: str
+    protocol: str = ""
+    label: str = ""
+
+
+class ExportGraph(BaseModel):
+    nodes: List[ExportNode] = Field(default_factory=list)
+    edges: List[ExportEdge] = Field(default_factory=list)
+
+
+class ExportRequest(BaseModel):
+    name: str = "circuit-app"
+    graph: ExportGraph
+    ai: bool = False
+    model: str = "claude-sonnet-4-6"
+    provider: str = "anthropic"
+
+
+class ValidateRequest(BaseModel):
+    source_cat: str
+    target_cat: str
+
+
+class MonitorConfigRequest(BaseModel):
+    config: Dict[str, str]
+
+
+class FixRequest(BaseModel):
+    problem_id: str
+
+
+class SavedCircuit(BaseModel):
+    id: str = Field(default_factory=_uid)
+    name: str = "Untitled Circuit"
+    graph: ExportGraph
+    version: int = 1
+    created_at: str = Field(default_factory=_now)
+    updated_at: str = Field(default_factory=_now)
+
+
+class CircuitSaveRequest(BaseModel):
+    name: str = "Untitled Circuit"
+    graph: ExportGraph

@@ -20,6 +20,13 @@ export const api = {
   deleteProject: (id) => axios.delete(`${API}/projects/${id}`).then((r) => r.data),
   monitor: (id) => axios.get(`${API}/projects/${id}/monitor`).then((r) => r.data),
   monitorConfig: (id, config) => axios.post(`${API}/projects/${id}/monitor/config`, { config }).then((r) => r.data),
+  fixProblem: (id, problem_id) => axios.post(`${API}/projects/${id}/fix`, { problem_id }).then((r) => r.data),
+  circuits: () => axios.get(`${API}/circuits`).then((r) => r.data),
+  circuit: (id) => axios.get(`${API}/circuits/${id}`).then((r) => r.data),
+  createCircuit: (body) => axios.post(`${API}/circuits`, body).then((r) => r.data),
+  updateCircuit: (id, body) => axios.put(`${API}/circuits/${id}`, body).then((r) => r.data),
+  deleteCircuit: (id) => axios.delete(`${API}/circuits/${id}`).then((r) => r.data),
+  exportJobFiles: (jobId) => axios.get(`${API}/builder/export-job/${jobId}/files`).then((r) => r.data),
   generate: (body) => axios.post(`${API}/builder/generate`, body).then((r) => r.data),
   validate: (body) => axios.post(`${API}/builder/validate`, body).then((r) => r.data),
 };

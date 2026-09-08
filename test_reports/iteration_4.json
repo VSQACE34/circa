@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 4 verification of 4 new features + regression. Backend: 15/15 new tests pass (strict payloads, fix-from-builder, saved circuits CRUD, export-job files+download), plus updated iter3 assertion (download no longer pops job) — total 36/36 backend tests pass. Frontend: verified Save→v1 toast, second Save bumps to v2 (update, not duplicate), My Circuits menu lists items, load restores nodes/edges/name, trash deletes; verified Analyzer 'Apply fix & re-check' on CORS-fixable problem — toast 'Fix applied & re-checked · CORS not configured' shown, fault edge cleared to healthy, problem removed from Trace. Codegen preview validated via backend (files endpoint returns {filename, ai_files, files:[{path,content}]}; download still works after files fetch — job not popped).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/projects/{id}/monitor/config", "issue": "Body {\"foo\":1} does not 422 as specified — MonitorConfigRequest.config has default_factory=dict so extra keys are ignored and empty config accepted; only a wrong-type body (e.g. config as list) yields 422. To meet the spec, mark config as required or set model_config extra='forbid'."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/backend/tests/test_iteration3.py",
+    "/app/test_reports/pytest/iter4_results.xml",
+    "/app/test_reports/pytest/iter4_all.xml"
+  ],
+  "action_items": [
+    "(minor) Make MonitorConfigRequest strict: either mark `config` required or add `model_config = ConfigDict(extra='forbid')` so `{\"foo\":1}` yields 422 per spec."
+  ],
+  "critical_code_review_comments": [
+    "EXPORT_JOBS remains in-memory — files+download now both persist across restart-only-safe. In multi-replica deployment, download URL may hit a different pod. Acceptable for single-node preview.",
+    "builder_service.fix_problem mutates the input graph dict in place (nodes list is aliased). Works because we re-persist via update_one, but pure-return semantics would be safer.",
+    "Frontend BuilderPage.getGraph loses node status/meta/subgraphs on save→reload roundtrip (only id/label/category/position preserved). If restoring an analyzed circuit's fault indicators is desired, extend the ExportNode schema.",
+    "ProblemsPanel: fix button appears only when both p.fixable && onFix are truthy — consistent with spec; ensure BuilderPage also wires onFix if fixes are ever surfaced there."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/backend/tests/test_iteration3.py",
+    "/app/test_reports/iteration_4.json"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "Created & deleted TEST_circuit / TEST_ui_circuit saved circuits during CRUD tests; re-analyzed expressjs/express during fix test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iteration4.py covers: strict payloads (validate/export/export-job return 422 on malformed; monitor/config only 422 on wrong type — flagged as minor spec gap), Fix From Builder (fixable flag, /projects/{id}/fix with bad id → 404, fix removes problem & heals graph), Codegen preview backend (files endpoint returns path/content list, download does NOT pop job), Circuits CRUD (POST creates v1, PUT bumps version, listing hides graph, GET returns full, DELETE + 404). UI Playwright verified Save/My Circuits menu and Analyzer fix-<id> button end-to-end.",
+  "rca of the issue": "N/A — only 1 minor validation-strictness gap on /monitor/config."
+}
