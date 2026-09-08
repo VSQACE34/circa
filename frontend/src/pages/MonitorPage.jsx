@@ -33,24 +33,14 @@ export default function MonitorPage() {
     api.projects().then((p) => {
       setProjects(p);
       if (p.length && !selId) setSelId(p[0].id);
-    }).catch(() => {});
-  }, []); // eslint-disable-line
+    }).catch((e) => console.error('load projects failed', e));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- run once on mount only
 
   useEffect(() => {
     if (!selId) return;
-    api.project(selId).then((p) => { setProject(p); setConfig(p.monitor_config || {}); }).catch(() => {});
+    api.project(selId).then((p) => { setProject(p); setConfig(p.monitor_config || {}); })
+      .catch((e) => console.error('load project failed', e));
   }, [selId]);
-
-  const saveConfig = async () => {
-    setSavingCfg(true);
-    try {
-      await api.monitorConfig(selId, config);
-      toast.success('Health-check endpoints saved', { description: 'Configured nodes now report live status.' });
-      poll();
-    } catch (e) {
-      toast.error('Could not save endpoints');
-    } finally { setSavingCfg(false); }
-  };
 
   const poll = useCallback(async () => {
     if (!selId) return;
@@ -58,8 +48,22 @@ export default function MonitorPage() {
       const d = await api.monitor(selId);
       setTele(d.telemetry);
       setTs(d.timestamp);
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      console.error('monitor poll failed', e);
+    }
   }, [selId]);
+
+  const saveConfig = useCallback(async () => {
+    setSavingCfg(true);
+    try {
+      await api.monitorConfig(selId, config);
+      toast.success('Health-check endpoints saved', { description: 'Configured nodes now report live status.' });
+      poll();
+    } catch (e) {
+      console.error('save monitor config failed', e);
+      toast.error('Could not save endpoints');
+    } finally { setSavingCfg(false); }
+  }, [selId, config, poll]);
 
   useEffect(() => {
     clearInterval(timer.current);

@@ -43,14 +43,14 @@ def test_validate_backend_to_db(client):
     r = client.post(f"{API}/builder/validate",
                     json={"source_cat": "backend", "target_cat": "database"}, timeout=30)
     assert r.status_code == 200
-    assert r.json()["valid"] is True
+    assert r.json()["valid"]
 
 
 def test_validate_db_to_llm_invalid(client):
     r = client.post(f"{API}/builder/validate",
                     json={"source_cat": "database", "target_cat": "llm"}, timeout=30)
     assert r.status_code == 200
-    assert r.json()["valid"] is False
+    assert not r.json()["valid"]
 
 
 # ----- Builder generate -----

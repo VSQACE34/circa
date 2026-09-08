@@ -7,6 +7,8 @@ import AnalyzerPage from './pages/AnalyzerPage';
 import BuilderPage from './pages/BuilderPage';
 import MonitorPage from './pages/MonitorPage';
 
+const TOAST_OPTIONS = { style: { background: '#0f172a', border: '1px solid #1e2d42', color: '#f8fafc' } };
+
 function App() {
   return (
     <div className="App min-h-screen">
@@ -20,7 +22,7 @@ function App() {
           </Routes>
         </ReactFlowProvider>
       </BrowserRouter>
-      <Toaster theme="dark" position="bottom-right" toastOptions={{ style: { background: '#0f172a', border: '1px solid #1e2d42', color: '#f8fafc' } }} />
+      <Toaster theme="dark" position="bottom-right" toastOptions={TOAST_OPTIONS} />
     </div>
   );
 }

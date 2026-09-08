@@ -37,7 +37,7 @@ class TestRealMonitoring:
         r = requests.post(f"{API}/projects/{pid}/monitor/config",
                           json={"config": {nid: "https://example.com"}}, timeout=30)
         assert r.status_code == 200
-        assert r.json()["saved"] is True
+        assert r.json()["saved"]
         # poll monitor
         r2 = requests.get(f"{API}/projects/{pid}/monitor", timeout=30)
         assert r2.status_code == 200

@@ -213,9 +213,10 @@ def _be_reqs(cats):
 def _be_env(cats):
     e = ['MONGO_URL="mongodb://mongo:27017"', 'DB_NAME="app"', 'CORS_ORIGINS="*"']
     if "auth" in cats:
-        e.append('JWT_SECRET="change-me"')
+        e.append("# Provide via environment; generate with: openssl rand -hex 32")
+        e.append('JWT_SECRET=""')
     if "llm" in cats:
-        e.append('EMERGENT_LLM_KEY="your-key"')
+        e.append('EMERGENT_LLM_KEY=""')
     return "\n".join(e) + "\n"
 
 

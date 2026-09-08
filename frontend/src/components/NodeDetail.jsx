@@ -51,7 +51,7 @@ export default function NodeDetail({ detail, onClose, onDrill }) {
               {endpoints.map((e, i) => {
                 const [method, ...rest] = String(e).split(' ');
                 return (
-                  <div key={i} className="flex items-center gap-2 text-xs font-mono bg-slate-950/60 rounded px-2 py-1.5">
+                  <div key={`${e}-${i}`} className="flex items-center gap-2 text-xs font-mono bg-slate-950/60 rounded px-2 py-1.5">
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${methodColor(method)}`}>{method}</span>
                     <span className="text-slate-300 truncate">{rest.join(' ')}</span>
                   </div>
@@ -67,8 +67,8 @@ export default function NodeDetail({ detail, onClose, onDrill }) {
               <Database size={12} /> TABLES / COLLECTIONS ({tables.length})
             </div>
             <div className="flex flex-wrap gap-1.5" data-testid="detail-tables">
-              {tables.map((t, i) => (
-                <span key={i} className="text-xs font-mono bg-amber-500/10 text-amber-300 border border-amber-500/25 rounded px-2 py-1">{t}</span>
+              {tables.map((t) => (
+                <span key={t} className="text-xs font-mono bg-amber-500/10 text-amber-300 border border-amber-500/25 rounded px-2 py-1">{t}</span>
               ))}
             </div>
           </div>

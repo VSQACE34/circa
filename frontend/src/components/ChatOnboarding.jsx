@@ -5,8 +5,10 @@ import { streamChat, MODELS } from '../lib/api';
 const GREETING =
   "Hey! I'm your Circuit architect. Let's design your app before we wire it up. First — what kind of app are you building, and who's it for?";
 
+const uid = () => 'm' + Math.random().toString(36).slice(2);
+
 export default function ChatOnboarding({ model, setModel, onReady }) {
-  const [messages, setMessages] = useState([{ role: 'assistant', content: GREETING }]);
+  const [messages, setMessages] = useState([{ id: uid(), role: 'assistant', content: GREETING }]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
@@ -19,7 +21,7 @@ export default function ChatOnboarding({ model, setModel, onReady }) {
     const text = input.trim();
     if (!text || busy) return;
     const history = messages.map((m) => ({ role: m.role, content: m.content }));
-    const next = [...messages, { role: 'user', content: text }, { role: 'assistant', content: '' }];
+    const next = [...messages, { id: uid(), role: 'user', content: text }, { id: uid(), role: 'assistant', content: '' }];
     setMessages(next);
     setInput('');
     setBusy(true);
@@ -30,7 +32,7 @@ export default function ChatOnboarding({ model, setModel, onReady }) {
         onDelta: (acc) => {
           setMessages((prev) => {
             const c = [...prev];
-            c[c.length - 1] = { role: 'assistant', content: acc };
+            c[c.length - 1] = { ...c[c.length - 1], content: acc };
             return c;
           });
         },
@@ -39,7 +41,7 @@ export default function ChatOnboarding({ model, setModel, onReady }) {
     } catch (e) {
       setMessages((prev) => {
         const c = [...prev];
-        c[c.length - 1] = { role: 'assistant', content: '⚠️ Connection error. Please try again.' };
+        c[c.length - 1] = { ...c[c.length - 1], content: '⚠️ Connection error. Please try again.' };
         return c;
       });
     } finally {
@@ -72,8 +74,8 @@ export default function ChatOnboarding({ model, setModel, onReady }) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
-        {messages.map((m, i) => (
-          <div key={i} className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+        {messages.map((m) => (
+          <div key={m.id} className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
             <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-emerald-500/15 border border-emerald-500/40' : 'bg-cyan-500/12 border border-cyan-500/40'}`}>
               {m.role === 'user' ? <User size={15} className="text-emerald-400" /> : <Bot size={15} className="text-cyan-400" />}
             </div>

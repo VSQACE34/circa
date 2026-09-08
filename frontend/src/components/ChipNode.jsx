@@ -21,12 +21,12 @@ export default function ChipNode({ data, selected }) {
       {/* pin leads top/bottom for IC look */}
       <div className="absolute -top-1 left-0 right-0 flex justify-around px-4 pointer-events-none">
         {[...Array(5)].map((_, i) => (
-          <span key={i} className="w-1 h-2 rounded-sm" style={{ background: '#334155' }} />
+          <span key={`pin-top-${i}`} className="w-1 h-2 rounded-sm" style={{ background: '#334155' }} />
         ))}
       </div>
       <div className="absolute -bottom-1 left-0 right-0 flex justify-around px-4 pointer-events-none">
         {[...Array(5)].map((_, i) => (
-          <span key={i} className="w-1 h-2 rounded-sm" style={{ background: '#334155' }} />
+          <span key={`pin-bottom-${i}`} className="w-1 h-2 rounded-sm" style={{ background: '#334155' }} />
         ))}
       </div>
 

@@ -6,6 +6,9 @@ import ChipNode from './ChipNode';
 import { catOf } from '../lib/theme';
 
 const nodeTypes = { chip: ChipNode };
+const FIT_VIEW_OPTIONS = { padding: 0.25 };
+const PRO_OPTIONS = { hideAttribution: true };
+const DEFAULT_EDGE_OPTIONS = { type: 'smoothstep' };
 
 export default function CircuitCanvas({
   nodes, edges, onNodesChange, onEdgesChange, onConnect,
@@ -27,9 +30,9 @@ export default function CircuitCanvas({
         nodesConnectable={editable}
         elementsSelectable
         fitView
-        fitViewOptions={{ padding: 0.25 }}
-        proOptions={{ hideAttribution: true }}
-        defaultEdgeOptions={{ type: 'smoothstep' }}
+        fitViewOptions={FIT_VIEW_OPTIONS}
+        proOptions={PRO_OPTIONS}
+        defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} color="#1E2D42" />
         <Controls showInteractive={false} />
